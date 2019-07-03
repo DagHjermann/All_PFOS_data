@@ -1,0 +1,33 @@
+﻿===========================
+Oppdatert 14.6
+===========================
+
+LIMS-nr, men ikke alt som er ordentlig LIMSnr (men kanskje det gamle vilab-nr) 
+ng/g som standard
+label_original kan være feil/misvisende
+
+Vær på vakt mot å få Milkys-data (eller andre data) inn to ganger 
+
+Avd/414
+UF2018_PFC  
+
+Fett og tørrstoff (men dette er ikke fettløselige stoffer)
+Lengde/vekt for fisk 
+
+Litt obs på oppdragsgiver i Tyrifjorden - både Miljødirektoratet og Huutameki  
+
+
+===========================
+Møte 2.7
+===========================
+Veldig økning i antall prøver fra 2017-2018, trolig pga Tyrifjorden
+Ifh. KIna viktig at vi ser på biota, som de ikke har 
+Hvordan håndterer vi dette i Norge
+
+- DHJ: problemer med for korte eller for lange sampelnummer - kan være VILAB-nr
+
+To topper i antall PFAS per sample, interessant å undersøke
+Finne art
+Finne individnr slik at en kan koble lever og muskel
+
+Sende nye data / statistikk til Bert til 12.7	
