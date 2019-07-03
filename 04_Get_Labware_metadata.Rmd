@@ -1,0 +1,591 @@
+---
+title: "04. Get Labware metadata"
+author: "DHJ"
+date: "2 7 2019"
+output: html_document
+---
+
+## Setup
+
+### 1a. Libraries
+```{r}
+library(niRvana)
+library(ggplot2)
+```
+
+### 1b. Connect to database
+```{r}
+connect_niva()
+```
+
+### 1c. Functions
+```{r}
+
+# From selected records in LABWARE_CHECK_SAMPLE, check data in Merete's dataset
+get_matrix_species <- function(df_nivabasen){
+  limscodes <- df_nivabasen %>% 
+    pull(TEXT_ID)
+  dat %>%
+    filter(LIMS %in% limscodes) %>%
+    count(Matrix_orig, Species)
+}
+
+# From selected records in LABWARE_CHECK_SAMPLE, change LIMS code to 12 characters and check data
+#   in Merete's dataset
+get_matrix_species_12char <- function(df_nivabasen){
+  limscodes <- df_nivabasen %>% 
+    mutate(TEXT_ID_12 = paste0(substr(TEXT_ID, 1, 8), substr(TEXT_ID, 10, 13))) %>%
+    pull(TEXT_ID_12)
+  dat %>%
+    filter(LIMS %in% limscodes) %>%
+    count(Matrix_orig, Species)
+}
+```
+
+
+## 2. Data
+### Data from Merete (stacked data)
+```{r}
+dat <- readxl::read_excel("Input_data/001 PFAS stacked data table.xlsx", guess_max = 11000)
+# A few errors in the 'PFASlength' variable
+tab <- table(dat$LIMS)
+length(tab)  # 2809
+samplecodes <- names(tab)
+```
+
+### Check year column  
+Should fit with LIMS column
+```{r}
+check <- as.numeric(substr(dat$LIMS,4,7)) == dat$Year
+mean(check)  # should be 1
+```
+
+## 3a. Preamble  
+Lots of the 2017-18 data lack species - can we get this from LIMS?
+```{r}
+table(substr(dat$LIMS,4,7), !is.na(dat$Species))
+```
+
+Lots of the 2017-18 data lack species - can we get this from LIMS?
+```{r}
+table(substr(dat$LIMS,4,7), !is.na(dat$Organ))
+```
+
+
+## 3b. Add columns from LABWARE_CHECK_SAMPLE to the Excel data   
+### No of characters in stacked data
+Almost all 2018 data lacking Species and Organ has 13 characters
+```{r}
+sel_year <- substr(dat$LIMS,4,7) %in% c("2015","2016","2017","2018")
+cat("Has species:\n")
+table(nchar(dat$LIMS[sel_year]), !is.na(dat$Species[sel_year]))   # Al
+cat("\nHas organ:\n")
+table(nchar(dat$LIMS[sel_year]), !is.na(dat$Organ[sel_year]))   # Al
+```
+
+
+### Get 12 and 13 character codes
+```{r}
+cat("13 character codes\n")
+sel_13 <- nchar(dat$LIMS) == 13
+tab <- table(dat$LIMS[sel_year & sel_13])
+length(tab)
+codes_13 <- names(tab)
+head(codes_13)
+
+cat("\n12 character codes\n")
+sel_12 <- nchar(dat$LIMS) == 12
+tab <- table(dat$LIMS[sel_year & sel_12])
+length(tab)
+codes_12_orig <- names(tab)
+# codes_12_orig  # 27 numbers from 2902 and up
+cat("- Originals: \n")
+head(codes_12_orig)
+```
+
+### Make modified LIMS for join
+```{r}
+dat <- dat %>% 
+  mutate(LIMS_modified = case_when(
+    Year >= 2015 & nchar(LIMS) == 13 ~ LIMS,
+    Year >= 2015 & nchar(LIMS) == 12 ~ paste0(substr(LIMS, 1, 8), "0", substr(LIMS, 9, 12)),
+    TRUE ~ as.character(NA)    
+  ))
+```
+
+
+
+### Get Labware data
+```{r}
+df_labware <- get_nivabase_selection(
+    "TEXT_ID,PROSJEKT,SAMPLE_TYPE,SAMPLED_DATE,DESCRIPTION,AQUAMONITOR_ID,AQUAMONITOR_CODE,AQUAMONITOR_NAME,SPECIES,TISSUE,BIOTA_SAMPLENO",
+    "LABWARE_CHECK_SAMPLE",
+    "TEXT_ID",
+    dat %>% filter(!is.na(LIMS_modified)) %>% pull(LIMS_modified) %>% unique(),
+    values_are_text = TRUE)
+nrow(df_labware)  # 1067
+
+xtabs(~PROSJEKT, df_labware)
+xtabs(~DESCRIPTION, df_labware)
+```
+
+```{r}
+# SLOW:
+# df <- get_nivabase_data("select * from NIVADATABASE.LABWARE_CHECK_SAMPLE where TEXT_ID like 'NR-2015%'")
+# Faster:
+df <- get_nivabase_data("select * from NIVADATABASE.LABWARE_CHECK_SAMPLE where TEXT_ID like 'NR-2015%' and PROSJEKT like '%MILKYS%'")
+prosjekt <- unique(df$PROSJEKT)
+xtabs(~PROSJEKT, df)
+
+```
+
+
+
+### Join data
+```{r}
+nrow(dat)
+dat <- dat %>% 
+  left_join(df_labware, by = c("LIMS_modified" = "TEXT_ID"))
+nrow(dat)
+```
+
+## 4. Check result  
+### Matrices
+```{r}
+dat %>%
+  count(Matrix)
+```
+
+
+### Table by species
+```{r}
+dat %>%
+  filter(Matrix %in% "biota" & Year >= 2015) %>%
+  count(nchar(LIMS), Species, SPECIES)
+```
+
+### Table by tissue
+```{r}
+dat %>%
+  filter(Matrix %in% "biota" & Year >= 2015) %>%
+  count(nchar(LIMS), Organ, TISSUE)
+```
+
+### Species of those with unknown tissue
+```{r}
+dat %>%
+  filter(Matrix %in% "biota" & Year >= 2015) %>%
+  filter(is.na(Organ) & is.na(TISSUE)) %>%
+  count(nchar(LIMS), Species, SPECIES)
+```
+
+## 5, Check codes of cod with unknown tissue  
+```{r}
+dat_sel <- dat %>%
+  filter(Matrix %in% "biota" & Year >= 2015) %>%
+  filter(is.na(Organ) & is.na(TISSUE)) %>%
+  filter(Species %in% "Gadus morhua")
+
+dat_sel %>%
+  count(Project, Year, Description)
+```
+
+
+### Check numbers
+```{r}
+xtabs(~Year, dat_sel)
+
+sampleno <- df_sel %>% pull(LIMS) %>% unique()
+length(sampleno)
+head(sampleno)
+x <- as.numeric(substr(sampleno,9,14))
+plot(x)
+plot(x[x < 232000])
+x[x < 230300]
+
+```
+
+
+## 6. Check one station/year with *unknown* tissue  
+I.e., the LIMS number in Excel doesn't fit with TEXT_ID in LABWARE_CHECK_SAMPLE  
+But we will also check in the BIOTA_ tables (turns out to find the LIMS number there!)  
+
+### In Excel file  
+```{r}
+dat_example <- dat_sel %>%
+  filter(Project %in% "MilKys" & Year %in% 2015 & Description %in% "13B")
+dat_example
+```
+
+### Check same year/station in NIVADATABASE.LABWARE_CHECK_SAMPLE
+```{r}
+labware_example_yr <- get_nivabase_data("select * from NIVADATABASE.LABWARE_CHECK_SAMPLE where TEXT_ID like 'NR-2015%' and PROSJEKT like '%MILKYS%'")
+xtabs(~PROSJEKT, labware_example_yr)
+prosjekt <- unique(df$PROSJEKT)
+# prosjekt
+labware_example <- labware_example_yr %>% filter(grepl("13B", DESCRIPTION, ignore.case = TRUE))
+labware_example
+```
+
+
+### Check same station in BIOTA_ tables   
+#### First, get BIOTA data from Nivadatabasen
+```{r}
+df_projects <- get_projects()   # we call it 'df_projects' (the default name used by 'get_stations_from_project')
+# Get a list of the stations in the CEMP_Biota project
+df_stations <- get_stations_from_project("CEMP_Biota", ignore.case = FALSE)
+# Get all specimens collected at these stations (20 seconds or so)
+df_specimens <- get_specimens_from_stationdata(df_stations)
+df_2015 <- get_biota_chemistry(
+  years = 2015, 
+  specimendata = df_specimens, 
+  stationdata = df_stations,
+  report_samples = TRUE)
+```
+
+
+#### Check data  
+AHA - LIMS in Excel file fits SAMPLE_ID in BIOTA_SAMPLES!    
+```{r}
+biota_example <- df_2015 %>% filter(STATION_CODE %in% "13B" & grepl("PFOS", NAME))
+biota_example
+
+```
+
+#### Compare sample numbers    
+```{r}
+cat("From Excel file (LIMS):\n")
+unique(dat_example$LIMS)
+cat("\nFrom biota_samples (SAMPLE_ID):\n")
+unique(biota_example$SAMPLE_ID)
+```
+
+
+## 7. Check one station/year with *known* tissue  
+These are no problem, really, so this is just 'for the record'  
+
+### In Excel file  
+```{r}
+dat_example <- dat %>%
+  filter(Year %in% 2015 & SPECIES %in% "Perca fluviatilis")
+
+dat_example %>%
+  count(LIMS, Species, DESCRIPTION) 
+```
+
+### Check same year/station in NIVADATABASE.LABWARE_CHECK_SAMPLE
+```{r}
+labware_example <- get_nivabase_selection("*", "LABWARE_CHECK_SAMPLE", "TEXT_ID", unique(dat_example$LIMS),
+                                          values_are_text = TRUE)
+labware_example
+```
+
+
+### Check same station in BIOTA_ tables     
+
+#### First, get BIOTA data from Nivadatabasen  
+We start with the O-number (project number)  
+```{r}
+# get_nivabase_data("select * from NIVADATABASE.PROJECTS_O_NUMBERS where rownum < 10")
+df_onum <- get_nivabase_data("select * from NIVADATABASE.PROJECTS_O_NUMBERS where O_NUMBER = '13223'")  # n = 1
+df_projects <- get_nivabase_selection("*", "PROJECTS", "PROJECT_ID", df_onum$PROJECT_ID)                # n = 1
+df_projects_stations <- get_nivabase_selection("*", "PROJECTS_STATIONS", "PROJECT_ID", df_projects$PROJECT_ID)  # n = 1
+df_specimens <- get_specimens_from_stationdata(df_projects_stations)  # n = 255 
+df_conc <- get_biota_chemistry(
+  years = 2015, 
+  specimendata = df_specimens, 
+  stationdata = df_projects_stations,
+  report_samples = TRUE)
+```
+
+
+#### Check the same subset of the data  
+```{r}
+biota_example <- df_conc %>% filter(LATIN_NAME %in% "Perca fluviatilis" & grepl("PFOS", NAME))
+biota_example
+```
+
+#### Compare sample numbers
+```{r}
+cat("From Excel file (LIMS):\n")
+unique(dat_example$LIMS)
+cat("\nFrom labware (TEXT_ID):\n")
+unique(labware_example$TEXT_ID)
+cat("\nFrom biota_samples (SAMPLE_ID):\n")
+unique(biota_example$SAMPLE_ID)
+```
+
+
+## 8. Add columns from BIOTA_SAMPLES to the Excel data   
+I.e., for the the Excel rows where the LIMS number doesn't fit with TEXT_ID in LABWARE_CHECK_SAMPLE, we use
+SAMPLE_ID from BIOTA_SAMPLES instead.  
+
+### Make modified LIMS for join  
+As in part 3 above ('LIMS_modified'), so we call it 'LIMS_modified2'
+```{r}
+# In Excel file (LIMS):  "NR-2015-230236" "NR-2015-230559" "NR-2015-230583" "NR-2015-230678" "NR-2015-230611"
+# In biota_samples (SAMPLE_ID): 230236 230323 230288 230722 230325 230704 230559 230611 230743 230678 230324
+
+dat <- dat %>% 
+  mutate(LIMS_modified2 = case_when(
+    Year >= 2015 & nchar(LIMS) == 14 ~ as.numeric(substr(LIMS, 9, 14)),
+    TRUE ~ as.numeric(NA)    
+  ))
+
+```
+
+### Get BIOTA_SAMPLES data
+```{r}
+df_samples <- get_nivabase_selection(
+  "SAMPLE_ID, SPECIES_ID, TISSUE_ID, STATION_ID, TAXONOMY_CODE_ID, SAMPLE_DATE", 
+  "BIOTA_SAMPLES",
+  "SAMPLE_ID", 
+  dat %>% filter(!is.na(LIMS_modified2)) %>% pull(LIMS_modified2) %>% unique()
+  )  # 452 lines
+
+```
+
+```{r}
+df_samples %>%
+  count(SPECIES_ID, TAXONOMY_CODE_ID, TISSUE_ID)
+```
+
+### Add species, tissue and station to 'df_samples'   
+Get species, tissue and station using the codes (TAXONOMY_CODE_ID etc.) and join to data
+```{r}
+df_taxcode <- get_nivabase_selection(
+  "TAXONOMY_CODE_ID, NAME", 
+  "TAXONOMY_CODES",
+  "TAXONOMY_CODE_ID", 
+  unique(df_samples$TAXONOMY_CODE_ID)
+  )  %>%
+  rename(BIOTA_Species = NAME)   # 3 lines
+
+#
+# Next lines are not needed, we need only use TAXONOMY_CODE_ID here
+#
+# df_species <- get_nivabase_selection(
+#   "*", 
+#   "SPECIES",
+#   "SPECIES_ID", 
+#   unique(df_samples$SPECIES_ID)
+#   )  # 1 line
+# 
+
+df_tissue <- get_nivabase_selection(
+  "TISSUE_ID, TISSUE_NAME", 
+  "BIOTA_TISSUE_TYPES",
+  "TISSUE_ID", 
+  unique(df_samples$TISSUE_ID)
+  ) %>%
+  rename(BIOTA_Tissue = TISSUE_NAME)
+
+# For statoins, there are several names (and sometimes codes) per STATION_ID, so they must be collapsed
+df_stations <- get_nivabase_selection(
+  "STATION_ID, STATION_CODE, STATION_NAME", 
+  "PROJECTS_STATIONS",
+  "STATION_ID", 
+  unique(df_samples$STATION_ID)
+  ) %>%
+  group_by(STATION_ID) %>%                                                      # Collapsing codes and names
+  summarise(BIOTA_Stationcode = paste(unique(STATION_CODE), collapse = "; "),
+            BIOTA_Stationname = paste(unique(STATION_NAME), collapse = "; ")
+  )
+
+# 
+nrow(df_samples)    # 452
+df_samples <- df_samples %>%
+  left_join(df_taxcode) %>%
+  left_join(df_tissue) %>%
+  left_join(df_stations) %>%
+  rename(BIOTA_Sampledate = SAMPLE_DATE) %>%
+  select(SAMPLE_ID, BIOTA_Species, BIOTA_Tissue, BIOTA_Stationcode, BIOTA_Stationname, BIOTA_Sampledate)
+nrow(df_samples)    # 452
+
+```
+
+### Join data
+```{r}
+nrow(dat)  # 59574
+dat <- dat %>% 
+  left_join(df_samples, by = c("LIMS_modified2" = "SAMPLE_ID"))
+nrow(dat)  # 59574
+```
+
+## 9. Have a look at final result
+### Species  
+BIOTA_Species adds no new info
+```{r}
+dat %>%
+  filter(Year >= 2015) %>%
+  count(Species, SPECIES, BIOTA_Species)
+```
+
+### Tissues  
+Both TISSUE and BIOTA_Tissue adds no new info
+```{r}
+dat %>%
+  filter(Year >= 2015) %>%
+  count(Organ, TISSUE, BIOTA_Tissue)
+```
+
+
+
+
+## Make dat2   
+Modified data set for new analyses
+Will have new values in 'Species' and 'Organ'
+
+### Make 'Species'  
+The old 'Species' is renamed
+```{r}
+dat2 <- dat %>%
+  rename(Species_orig = Species) %>%
+  mutate(Species = case_when(
+    !is.na(SPECIES) & is.na(Species_orig) ~ SPECIES,
+    !is.na(SPECIES) & Species_orig %in% c("Fish","Måke","Bird") ~ SPECIES,
+    !is.na(SPECIES) & SPECIES != "Ikke angitt" & Species_orig %in% "Ørret" ~ SPECIES,
+    TRUE ~ Species_orig
+  )
+  )
+```
+
+Check  
+```{r}
+dat2 %>%
+  filter(Year >= 2015) %>%
+  count(Species_orig, Species, SPECIES, BIOTA_Species)
+```
+
+
+### Remake 'Organ'   
+Make Organ_new first (for checking)
+```{r}
+dat2 <- dat2 %>%
+  mutate(Organ_new = case_when(
+    is.na(Organ) & (grepl("Blod", TISSUE) | grepl("Blod", BIOTA_Tissue)) ~ "blood",
+    is.na(Organ) & (grepl("Egg", TISSUE) | grepl("Egg", BIOTA_Tissue)) ~ "egg",
+    is.na(Organ) & (grepl("Lever", TISSUE) | grepl("Lever", BIOTA_Tissue)) ~ "liver",
+    is.na(Organ) & (grepl("Muskel", TISSUE) | grepl("Muskel", BIOTA_Tissue)) ~ "filet",
+    is.na(Organ) & (grepl("Whole soft body", TISSUE) | grepl("Whole soft body", BIOTA_Tissue)) ~ "whole body",
+    is.na(Organ) & grepl("Hel organisme", TISSUE) ~ "whole body",
+    is.na(Organ) & !is.na(TISSUE) ~ TISSUE,
+    TRUE ~ Organ
+  )
+  )
+```
+
+
+Check Organ
+```{r}
+dat2 %>%
+  filter(Year >= 2015) %>%
+  count(Organ, Organ_new, TISSUE, BIOTA_Tissue)
+```
+
+Replace 'Organ'  
+```{r}
+dat2 <- dat2 %>%
+  select(-Organ) %>%
+  rename(Organ = Organ_new)
+```
+
+### Final shaping up dat2  
+Reorder columns
+```{r}
+dat2 <- dat2 %>%
+  select(Description:Species_orig, Species,
+         Organ_orig, Organ,
+         everything())
+```
+
+### Save
+```{r}
+saveRDS(dat2, file = "Data/04_dat2.rds")
+
+infostring <- c(
+  "Based on '001 PFAS stacked data table.xlsx'. Column 'Species' and 'Organ' are updated for years",
+  "2015 onwards.",
+  "'Species' was updated based on column SPECIES (from table 'LABWARE_CHECK_SAMPLE) and from column",
+  "'BIOTA_species' (from table 'BIOTA_SAMPLES').",
+  "'Organ' was updated based on column TISSUE_NAME (from table 'LABWARE_CHECK_SAMPLE) and from column",
+  "'BIOTA_Tissue' (from table 'BIOTA_SAMPLES').",
+  "Code: 04_Get_Labware_metadata.Rmd"
+)
+  
+data_for_excel <- list(
+  dat2,
+  tibble(Info = infostring)
+)
+names(data_for_excel) <- c("Data", "Info")
+
+openxlsx::write.xlsx(data_for_excel, file = "Data/PFAS stacked data table ver 02.xlsx")
+
+```
+
+
+
+
+
+
+## OLD STUFF
+```{r}
+get_nivabase_data("select TABLE_NAME from ALL_TAB_COLUMNS where OWNER = 'NIVADATABASE' and column_name = 'TAXONOMY_CODE_ID'")  
+get_nivabase_data("select TABLE_NAME from ALL_TAB_COLUMNS where OWNER = 'NIVADATABASE' and column_name = 'PROJECT_ID'")  
+```
+
+```{r}
+get_nivabase_data("SELECT * from NIVADATABASE.TAXONOMY where rownum < 4")
+
+```
+
+### In Excel file  
+```{r}
+?get_nivabase_selection
+```
+
+```{r}
+# PROSJEKT is never NA in the labware table...
+sum(is.na(df_labware$PROSJEKT))
+# ... so we use that as a marker for when there was no join from the labware table (LIMS not equal to any TEXT_ID)
+
+
+
+
+sel_newjoin <- dat %>% filter(Matrix %in% "biota" & Year >= 2015 & is.na(PROSJEKT)
+
+dat_sel %>%
+  count(Project, Year, Description)
+
+
+dat_example <- dat_sel %>%
+  filter(Project %in% "MilKys" & Year %in% 2015 & Description %in% "13B")
+dat_example
+```
+
+### Check same year/station in NIVADATABASE.LABWARE_CHECK_SAMPLE
+```{r}
+labware_example_yr <- get_nivabase_data("select * from NIVADATABASE.LABWARE_CHECK_SAMPLE where TEXT_ID like 'NR-2015%' and PROSJEKT like '%MILKYS%'")
+xtabs(~PROSJEKT, labware_example_yr)
+prosjekt <- unique(df$PROSJEKT)
+# prosjekt
+labware_example <- labware_example_yr %>% filter(grepl("13B", DESCRIPTION, ignore.case = TRUE))
+labware_example
+```
+
+
+### Check same station in BIOTA_ tables   
+#### First, get BIOTA data from Nivadatabasen
+```{r}
+df_projects <- get_projects()   # we call it 'df_projects' (the default name used by 'get_stations_from_project')
+# Get a list of the stations in the CEMP_Biota project
+df_stations <- get_stations_from_project("CEMP_Biota", ignore.case = FALSE)
+# Get all specimens collected at these stations (20 seconds or so)
+df_specimens <- get_specimens_from_stationdata(df_stations)
+df_2015 <- get_biota_chemistry(
+  years = 2015, 
+  specimendata = df_specimens, 
+  stationdata = df_stations,
+  report_samples = TRUE)
+```
+
