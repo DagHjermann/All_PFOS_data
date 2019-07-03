@@ -1,0 +1,34 @@
+From: Merete Grung 
+Sent: 07 May 2019 12:23
+To: Dag Øystein Hjermann (Dag.Hjermann@niva.no) <Dag.Hjermann@niva.no>
+Subject: PFAS stack
+
+Hei Dag, 
+Vedlagt er PFAS stack som jeg kaller det. Arket har følgende kolonner: 
+
+1.	Description – her er det lagt ulik informasjon (kanskje mest om ulike stasjoner i for eksempel Tyrifjorden) som ikke har med art å gjøre. Kan være innsjø i f.eks. store innsjøer. 
+2.	Project – Urban fjord – milfersk osv. 
+3.	LIMS – Dette er LIMSnr – men for årstall før 2016 (2015?) er dette ikke LIMSnr, men nummersystemet som ble brukt tidligere. Jeg har lagt på «NR-« på alle for å hente ut årstallet
+4.	Matrix_orig – Dette er det som står i excel-filene, men for noen har jeg satt inn biota – sediment osv. 
+5.	Species – Dette er opplysninger om art som ligger originalt
+6.	Organ_orig – Evt. Opplysninger om organet som er brukt
+7.	Unit – Her har eg gjort om alt til samme enhet – slik at det kan originalt ha stått µg/kg, mens jeg da har skrevet ng/g. Jeg har også gjort om ng/mL til ng/g. 
+8.	Label_original – namn på PFAS
+9.	Data_orig – målt verdi
+10.	Data – malt Verdi – komma erstattet med punktum
+11.	Data_nr – alle nummerverdier i nummerformat – dvs. alle under deteksjonsgrensen er borte
+12.	Count – tellekolonne for deteksjoner
+13.	Year – hentet årstall ut fra LIMSnr (årstallet kan være feil?)
+14.	Matrix – standardiser verdier for matrix
+15.	Organ – standardiserte verdier
+16.	Class – standardiserte verdier
+17.	PFAS – standardiserte verdier
+18.	PFASgroup – fra OECD-liste (hvilken PFAS-overordnet gruppe)
+19.	PFASlength – fra OECD-liste (kjedelengde)
+20.	PFASlength_nr – nummerverdi for lengde. 
+
+Jeg sender deg formlene på de standardiserte verdiene litt senere – skal på et møte resten av dagen. 
+
+Lykke til!
+
+M
