@@ -89,7 +89,7 @@ df_check %>%
 #  9 BIOTA         Larus argentatus      120
 # 10 BIOTA         Mysis relicta           9
 
-get_matrix_species(df_check %>% filter(SPECIES %in% "Larus argentatus"))     # Bird, gråmåke, måke
+get_matrix_species(df_check %>% filter(SPECIES %in% "Larus argentatus"))     # Bird, grÃ¥mÃ¥ke, mÃ¥ke
 get_matrix_species(df_check %>% filter(SPECIES %in% "Gadus morhua"))         # Gadus morhua
 get_matrix_species(df_check %>% filter(SPECIES %in% "Coregonus lavaretus"))  # Fish, sik
 get_matrix_species(df_check %>% filter(SPECIES %in% "Coregonus albula"))     # Biota, species not given
@@ -122,8 +122,8 @@ df_check %>%
 # 5 SJ<d8>VANN  NA                   74
 
 
-get_matrix_species_12char(df_check %>% filter(SPECIES %in% "Ikke angitt"))  # Måke
-get_matrix_species_12char(df_check %>% filter(SPECIES %in% "Osmerus eperlanus"))  # Ørret (mistaken from krøkle?)
+get_matrix_species_12char(df_check %>% filter(SPECIES %in% "Ikke angitt"))  # MÃ¥ke
+get_matrix_species_12char(df_check %>% filter(SPECIES %in% "Osmerus eperlanus"))  # Ã˜rret (mistaken from krÃ¸kle?)
 get_matrix_species_12char(df_check %>% filter(SAMPLE_TYPE %in% "Ferskvann"))  # no hits
 get_matrix_species_12char(df_check %>% filter(SAMPLE_TYPE %in% "SJ<d8>VANN"))  # grevling, trost, jord....
 
