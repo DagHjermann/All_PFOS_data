@@ -9,8 +9,10 @@ output: html_document
 
 ### 1a. Libraries
 ```{r}
+library(dplyr)
 library(niRvana)
 library(ggplot2)
+library(tidyr)
 ```
 
 ### 1b. Connect to database
@@ -432,7 +434,7 @@ dat %>%
 
 
 
-## Make dat2   
+## 10. Make dat2   
 Modified data set for new analyses
 Will have new values in 'Species' and 'Organ'
 
@@ -499,10 +501,26 @@ dat2 <- dat2 %>%
          everything())
 ```
 
-### Save
 ```{r}
-saveRDS(dat2, file = "Data/04_dat2.rds")
+dat2 <- dat2 %>%
+  ungroup() %>%
+  mutate(Class = case_when(
+    Species %in% c("Clupea harengus", "Coregonus albula", "Osmerus eperlanus",
+                   "Salmo trutta") ~ "Fish",
+    Species %in% c("Euphausiacea indet", "Mysis relicta", "Mytilus edulis",
+                   "Pandalus borealis", "Polychaeta") ~ "Aquatic",
+    TRUE ~ Class,
+  ))
+```
 
+## 11. Save
+```{r}
+# Save in Rdata format
+saveRDS(dat2, file = "Data/04_dat2.rds")
+# For loading:
+# dat2 <- readRDS(file = "Data/04_dat2.rds")
+
+# Save in excel format
 infostring <- c(
   "Based on '001 PFAS stacked data table.xlsx'. Column 'Species' and 'Organ' are updated for years",
   "2015 onwards.",
@@ -523,7 +541,219 @@ openxlsx::write.xlsx(data_for_excel, file = "Data/PFAS stacked data table ver 02
 
 ```
 
+## 12. Prepare for making wide format  
+Wide format: One column = one parameter  
+Needs to have only one row for each combinations of LIMS, PFAS, Species, etc. That is what we do below.  
 
+### Same LIMS can have two different Matrix  
+Example below. So we need to group on Matrix as well. 
+```{r}
+dat2 %>% filter(LIMS %in% "NR-2013-2612-1A" & PFAS %in% "PFBS") %>% select(LIMS, Matrix, PFAS, Data)
+```
+
+### Check duplicates 1   
+ca 783 duplicates, but as we will see in the next part 
+```{r}
+#  Check whether we have duplicates
+check1 <- dat2 %>%
+  count(LIMS, PFAS, Matrix) %>%
+  mutate(LIMS_PFAS_Matrix = paste(LIMS, PFAS, Matrix, sep = "_"))
+
+table(check1$n)
+```
+
+### Check duplicates 2   
+check2: pick duplicates from check1 and list all different values for each variable  
+Exploration of the 4 different "cases" in check2  
+```{r}
+# Function for listing all different variables
+vals <- function(x) {
+  paste(unique(x), collapse = ";")
+}
+# vals(c(1,4,4,6,8,19,8))
+
+check2 <- dat2 %>%
+  mutate(LIMS_PFAS_Matrix = paste(LIMS, PFAS, Matrix, sep = "_")) %>%
+  filter(LIMS_PFAS_Matrix %in% subset(check1, n > 1)$LIMS_PFAS_Matrix) %>%
+  select(LIMS, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+         PFAS, Data) %>%
+  group_by(LIMS, PFAS) %>%
+  summarise_all(vals)
+
+sel <- grepl(";", check2$Data); sum(sel)  # 63, so most of the 773 duplicates have the same value
+mean(sel)  # 8 %
+
+# Look at the whole thing (code below is based on this)
+# View(check2[sel,])
+
+# Exploration of each "case":
+
+# 1. Some Milkys PFPA data 2006-2007 - two different 'Label_original': PFPA and PFPeA
+check2[sel,] %>% filter(PFAS == "PFPA") %>% select(LIMS, PFAS, Description, Species, Class, Data)
+dat2 %>% 
+  filter(LIMS %in% "NR-2006-60801" & PFAS == "PFPA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Data)
+
+# 2. Store innsjøer 2015 - registered  twice with slightly different concentrations
+#    Sometimes also as species Osnerus eperlanus and Krøkle (same thing)
+check2[sel,] %>% 
+  filter(Project == "Store innsjøer") %>% 
+  select(LIMS, PFAS, Description, Species, Class, Data)
+# Used later
+lims_storeinnsjo_2015 <- check2[sel,] %>% 
+  filter(Project == "Store innsjøer") %>% 
+  select(LIMS, PFAS, Description, Species, Class, Data) %>%
+  pull(LIMS) %>% unique()
+dat2 %>% 
+  filter(LIMS %in% "NR-2015-09882" & PFAS == "PFDA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Data)
+dat2 %>% 
+  filter(LIMS %in% "NR-2015-09882" & PFAS == "PFDA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Data)
+dat2 %>% 
+  filter(LIMS %in% "NR-2015-09889" & PFAS == "PFNA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Data)
+
+# 3. Tyrifjorden 2018 - some with LIMS number "NR-2018-" (but Description differs)
+check2[sel,] %>% 
+  filter(Project == "Tyrifjorden") %>% 
+  select(LIMS, PFAS, Description, Species, Class, Data)
+dat2 %>% 
+  filter(LIMS %in% "NR-2018-" & PFAS == "PFDA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Data)
+
+# 3. Ransfjorden (I964, I965, I969) 2018 - duplicates of PFHpA and Sum
+#    Sum: may be with and without detection limit?
+#    PFHpA - two different 'Label_original': PFHpA and HPFHpA
+check2[sel,] %>% 
+  filter(Project == "MilKys" & Description %in% c("I964","I965","I969")) %>% 
+  select(LIMS, PFAS, Description, Species, Class, Data)
+#    Sum: may be with and without detection limit?
+dat2 %>% 
+  filter(LIMS %in% "NR-2018-242373") %>% 
+  select(LIMS, PFAS, Label_original, Description, Data)
+# Used later
+lims_ranfjorden <- dat2 %>% 
+  filter(Project == "MilKys" & Description %in% c("I964","I965","I969") & PFAS %in% "Sum") %>%
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Data) %>%
+  pull(LIMS) %>% unique()
+#    PFHpA - two different 'Label_original'
+dat2 %>% 
+  filter(LIMS %in% "NR-2018-242373" & PFAS %in% "PFHpA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Data)
+check2[sel,] %>% 
+  filter(Project == "MilKys" & Description %in% c("I964","I965","I969"))
+```
+
+### Duplicates 3: Check PFPA and PFPeA, plus PFHpA and HPFHpA  
+PFPeA only found 6 times in 2006-07
+HPFHpA only found 9 times in 2018
+```{r}
+xtabs(~Year + Label_original, subset(dat2, PFAS %in% c("PFPA", "PFPeA")))
+xtabs(~Year + Label_original, subset(dat2, PFAS %in% c("PFHpA", "HPFHpA")))
+```
+
+### Duplicates 4: Make dat2_corrected
+```{r}
+# For broad data
+dat2_corrected <- dat2 %>%
+  filter(!grepl("<", Data)) %>%
+  mutate(Data = as.numeric(Data)) %>%
+  select(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+         PFAS, Data)
+nrow(dat2_corrected)
+
+# Part 1 and (partly) 4 above - correct PFAS
+dat2_corrected <- dat2_corrected %>%
+  mutate(PFAS = ifelse(Label_original %in% c("PFPeA", "HPFHpA"), Label_original, PFAS))
+         
+# Part 4 above: Delete high sums for Ranfjorden blue mussel 
+dat2_corrected <- dat2_corrected %>%
+  filter(!(LIMS %in% lims_ranfjorden & PFAS %in% "Sum" & Data > 10))
+nrow(dat2_corrected)
+
+# Part 2 above - set same Species
+# That values differ slighlty we fix by making the means
+dat2_corrected <- dat2_corrected %>%
+  arrange(LIMS, PFAS, Species) %>%
+  group_by(LIMS, PFAS) %>%
+  mutate(Species = ifelse(LIMS %in% lims_storeinnsjo_2015, first(Species), Species)) %>%
+  ungroup()
+nrow(dat2_corrected)
+
+# Part 3 should be no problem, since "Description" differs
+```
+
+### Duplicates 5: Make means of the modified data
+```{r}
+dat2_means <- dat2_corrected %>%
+  group_by(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+           PFAS) %>%
+  summarize(Data = mean(Data))
+nrow(dat2_means)
+```
+
+### Which PFAS has highest percentage detection?
+```{r}
+# First, make  
+detection_rate <- dat2_corrected %>%
+  count(PFAS) %>%
+  arrange(desc(n))
+
+# Will be used for factor() later
+PFAS_ordered <- detection_rate %>% pull(PFAS)
+
+detection_rate
+```
+
+## 13. Make wide format data
+
+### All data
+```{r}
+dat2_wide <- dat2_means %>%
+  mutate(PFAS = factor(PFAS, levels = PFAS_ordered)) %>%
+  select(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+         PFAS, Data) %>%
+  tidyr::spread(key = PFAS, value = Data)
+
+# Save in Rdata format
+saveRDS(dat2_wide, file = "Data/04_dat2_wide.rds")
+
+openxlsx::write.xlsx(dat2_wide, file = "Data/002 PFAS split table ver02.xlsx")
+
+```
+
+
+### Biota data
+```{r}
+sum(is.na(dat2_wide$Matrix)) # 0
+xtabs(~addNA(Species) + Matrix, dat2_wide)
+
+openxlsx::write.xlsx(dat2_wide %>% filter(Matrix %in% "biota"),
+                     file = "Data/003 Subset PFAS biota ver02.xlsx")
+
+```
+
+### Fish data
+```{r}
+sum(is.na(dat2_wide$Class)) # 2
+xtabs(~Species + addNA(Class), subset(dat2_wide, Matrix %in% "biota"))
+
+openxlsx::write.xlsx(dat2_wide %>% filter(Class %in% "Fish"),
+                     file = "Data/004 Subset PFAS fish ver02.xlsx")
+
+```
+
+```{r}
+
+
+df <- dat2 %>%
+  filter(!grepl("<", Data)) %>%
+  mutate(Data = as.numeric(Data)) %>%
+  select(LIMS, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+         PFAS, Data)
+df[c(8616,8949),]
+```
 
 
 
