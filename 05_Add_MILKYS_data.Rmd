@@ -1,0 +1,509 @@
+---
+title: "05. Add Milkys metadata"
+author: "DHJ"
+date: "2 7 2019"
+output: 
+  html_document:
+    keep_md: true
+    toc: true
+    toc_float: true
+---
+
+## Setup
+
+### 1a. Libraries
+```{r}
+library(dplyr)
+library(niRvana)
+library(ggplot2)
+library(tidyr)
+
+# install.packages("ODBC")
+source("05_Add_MILKYS_data_functions.R")
+```
+
+### 1b. Set username and password
+```{r}
+# set_credentials()
+```
+
+## Data  
+### Read data  
+- dat: Excel data from Merete
+- dat2_means: based on Excel data, species and tissua added, no less-thans (not used here)
+- cemp_comb: Access data 
+- data_ind2: Access data, updated with NIVAbasen data through 2017
+```{r}
+# Data from Merete (stacked data)
+dat <- readxl::read_excel("Input_data/001 PFAS stacked data table.xlsx", guess_max = 11000)
+
+# From script 05 - 'dat2_means' (duplicate-free version of 'dat2')
+dat2 <- readRDS(file = "Data/04_dat2.rds")
+dat2_means <- readRDS(file = "Data/04_dat2_means.rds")
+
+# Access data
+load("Input_data/Milkys_Data_2017_02_14_cemp_combinedtable.RData")  # cemp_comb
+# load("Input_data/Milkys_Data_2017_02_14_cemp_tables.RData")  # cemp_c2, cemp_f2, cemp_t 
+
+# Access data with NIVAbasen data added for 2015-2017
+fn <- "../Milkys_2018/Data/12_data_ind2_2018-08-23.RData"
+data_ind2 <- readRDS(fn)
+```
+
+
+### cemp_comb + data_ind2: Add 'param2'
+```{r}
+cemp_comb <- cemp_comb %>%
+  left_join(cemp_synonyms) %>%
+  mutate(param2 = ifelse(is.na(param_standard), param, param_standard)) %>%
+  select(-param_standard)
+
+cemp_comb %>%
+  filter(param != param2) %>%
+  count(param, param2)
+
+data_ind2 <- data_ind2 %>%
+  left_join(cemp_synonyms, by = c("PARAM" = "param")) %>%
+  mutate(param2 = ifelse(is.na(param_standard), PARAM, param_standard)) %>%
+  select(-param_standard)
+```
+
+
+### Same station/year in 4 datasets  
+```{r}
+# Access database
+test_cemp <- cemp_comb %>%
+  filter(jmpst %in% "36B" & myear %in% 2013 & param %in% "PFOS") 
+# View(test_cemp)
+test_cemp
+
+# Access + NIVAbasen database
+test_cemp2 <- data_ind2 %>%
+  filter(STATION_CODE %in% "36B" & MYEAR %in% 2013 & param2 %in% "PFOS") 
+# View(test_cemp2)
+test_cemp2
+
+#
+# Commented out in order to 
+#
+# Database (WILAB)
+# test_wilab <- get_nivabase_data("select * from WILAB.TEST where TESTNO like '2013-02901'")
+# test_wilab %>% select(TESTNO, SERIALNO, MARKING, DESCRIPT, X5, X9)
+
+# Excel data
+sel <- with(dat, substr(LIMS,4,7) == "2013" & Species %in% "Gadus morhua" & Description %in% "36B" & PFAS %in% "PFOS")
+sum(sel)
+# View(dat[sel, ])
+dat[sel,] %>% select(Description, Project, LIMS, Matrix_orig, Matrix, Species, Organ_orig, Organ, Label_original, PFAS, Data)
+```
+
+
+
+### Number of PFAS params  
+For the example station/year
+```{r}
+cat("Excel data:\n")
+dat %>%
+  filter(substr(LIMS,4,7) == "2013" & Species %in% "Gadus morhua" & Description %in% "36B") %>%
+  pull(PFAS) %>%
+  unique() %>% sort()
+
+# Access
+df <- cemp_comb %>%
+  filter(jmpst %in% "36B" & myear %in% 2013 & substr(param,1,2) == "PF")
+cat("\nAccess, new names:\n")
+df %>%
+  pull(param2) %>%
+  unique() %>% sort()
+cat("\nAccess, old names:\n")
+df %>%
+  pull(param) %>%
+  unique() %>% sort()
+
+# Access + NIVAbasen
+df <- data_ind2 %>%
+  filter(STATION_CODE %in% "36B" & MYEAR %in% 2013 & substr(param2,1,2) %in% "PF") 
+cat("\nAccess + NIVAbasen, new names:\n")
+df %>%
+  pull(param2) %>%
+  unique() %>% sort()
+cat("\nAccess + NIVAbasen, old names:\n")
+df %>%
+  pull(PARAM) %>%
+  unique() %>% sort()
+
+```
+
+
+### Number of PFAS params 2
+For a different station/year (Sørfjorden)
+```{r}
+cat("Excel data:\n")
+dat %>%
+  filter(substr(LIMS,4,7) == "2009" & Species %in% "Gadus morhua" & Description %in% "23B") %>%
+  pull(PFAS) %>%
+  unique() %>% sort()
+
+# Access
+df <- cemp_comb %>%
+  filter(jmpst %in% "23B" & myear %in% 2009 & substr(param,1,2) == "PF")
+cat("\nAccess, new names:\n")
+df %>%
+  pull(param2) %>%
+  unique() %>% sort()
+cat("\nAccess, old names:\n")
+df %>%
+  pull(param) %>%
+  unique() %>% sort()
+
+```
+
+### Recreate cemp_synonyms and use it   
+Used only while refining cemp_synonyms (in the ...functions file)
+```{r}
+# source("05_Add_MILKYS_data_functions.R")
+# load("Input_data/Milkys_Data_2017_02_14_cemp_combinedtable.RData")  # cemp_comb
+# cemp_comb <- cemp_comb %>%
+#   left_join(cemp_synonyms) %>%
+#   mutate(param2 = ifelse(is.na(param_standard), param, param_standard)) %>%
+#   select(-param_standard)
+
+```
+## 11 most common parameters in cod
+### Excel data
+```{r}
+# cat("Excel data:\n")
+df <- dat %>%
+  filter(Year <= 2014 & Species %in% "Gadus morhua") %>%
+  count(PFAS) %>%
+  filter(n > 10) %>%
+  arrange(PFAS)
+df %>% pull(PFAS)
+# "PFBS"   "PFDA"   "PFDS"   "PFHpA"  "PFHxA"  "PFHxS"  "PFNA"   "PFOA"   "PFOS"   "PFOSA"  "PFUnDA" - the 11 most common ones
+# And the same as in CEMP
+df
+```
+
+### Access
+```{r}
+df <- cemp_comb %>%
+  filter(myear <= 2014 & grepl("^PF", param2) & speci == "GADU MOR") %>%
+  count(param2) %>%
+  filter(n > 50) %>%
+  arrange(param2)
+df %>% pull(param2)
+df
+# "PFBS"   "PFDA"   "PFDS"   "PFHpA"  "PFHxA"  "PFHxS"  "PFNA"   "PFOA"   "PFOS"   "PFOSA"  "PFUnDA" - the 11 most common ones
+```
+
+
+
+## The less used parameters in cod
+### Excel data
+```{r}
+# cat("Excel data:\n")
+df <- dat %>%
+  filter(Year <= 2014 & Species %in% "Gadus morhua") %>%
+  count(PFAS) %>%
+  filter(n < 10) %>%
+  arrange(PFAS)
+df %>% pull(PFAS)
+# "10:2 FTOH" "12:2 FTOH" "4:2 FTOH"  "6:2 FTOH"  "6:2 FTS"   "8:2 FTOH"  "8:2 FTS"   "N-EtFOSA"  "N-EtFOSE"  "N-MeFOSA" 
+# "N-MeFOSE"  "PFBA"      "PFDoDA"    "PFDoS"     "PFHpS"     "PFNS"      "PFPA"      "PFPeS"     "PFPS"      "PFTeDA"   
+# "PFTeS"     "PFTrDA"    "PFTrS"     "PFUnS"
+df
+```
+
+
+### Access
+```{r}
+df <- cemp_comb %>%
+  filter(myear <= 2014 & grepl("^PF", param2) & speci == "GADU MOR") %>%
+  count(param2) %>%
+  filter(n <= 50) %>%
+  arrange(param2)
+df %>% pull(param2)
+# Here:            "PFBA"   "PFDoDA" "PFHXDA" "PFODA"  "PFPeA"  "PFTeDA" "PFTrDA"
+# In Excel data:     x         x                                   x        x
+df
+```
+
+## Number of observations, cod (PFOS obs per year)
+### Excel data
+```{r}
+# cat("Excel data:\n")
+dat %>%
+  filter(Year <= 2014 & Species %in% "Gadus morhua" & PFAS == "PFOS" & Description == "23B") %>%
+  count(Year)
+```
+
+### Access  
+The number of observations in Access is much higher and makes much more sense
+```{r}
+cemp_comb %>%
+  filter(myear <= 2014 & speci == "GADU MOR" & param2 %in% "PFOS" & jmpst %in% "23B") %>%
+  count(myear)
+```
+
+## Stations, cod (PFOS as example)
+### Excel data
+```{r}
+# cat("Excel data:\n")
+dat %>%
+  filter(Year <= 2014 & Species %in% "Gadus morhua" & PFAS == "PFOS") %>%
+  count(Description)
+```
+
+### Access  
+The same stations, but lacking '13BH' and with 145B, 146B and 147B in addition
+```{r}
+cemp_comb %>%
+  filter(myear <= 2014 & speci == "GADU MOR" & param2 %in% "PFOS") %>%
+  count(jmpst)
+```
+
+## Number of observations, blue mussel (PFOS obs per year)
+### Excel data  
+Extremely few observations up until 2014 (and not so many thereafter)  
+```{r}
+# dat %>%
+#   count(Species)
+dat %>%
+  filter(Year <= 2014 & Species %in% "Blåskjell" & PFAS == "PFOS") %>%
+  count(Description, Year)
+```
+
+### Access  
+Even fewer observations  
+```{r}
+cemp_comb %>%
+  filter(speci == "MYTI EDU" & param2 %in% "PFOS") %>%
+  count(speci, jmpst, myear)
+# cat("Excel data:\n")
+```
+## Make ready for making new version of data set  
+- Delete MilKys cod through 2017, and replace those data with cod data from Access   
+- Only 
+- Also add new columns for fat, dry weight,length, weight   
+
+### Counts
+```{r}
+data_ind2 %>% filter(LATIN_NAME %in% "Gadus morhua" & param2 %in% "PFOS") %>% nrow()
+dat2_means %>% filter(Species %in% "Gadus morhua" & PFAS %in% "PFOS") %>% nrow()
+```
+
+### Tissues
+Lever only  
+```{r}
+dat2 %>% 
+  filter(Project %in% "MilKys") %>%
+  count(Project, Species, Organ)
+
+data_ind2 %>% 
+  filter(LATIN_NAME %in% c("Gadus morhua", "Platichthys flesus", "Limanda limanda")) %>%
+  filter(grepl("^PF", PARAM)) %>%
+  count(LATIN_NAME, TISSUE_NAME) # %>% pull(TISSUE_NAME)
+```
+
+### Units 1
+Access data = U, NIVAbasen = UG_P_KG, Excel = ng/g  
+We test below that they are the same  
+```{r}
+data_ind2 %>%
+  filter(LATIN_NAME %in% "Gadus morhua" & param2 %in% "PFOS") %>%
+  xtabs(~MYEAR + UNIT, .)
+
+dat %>%
+  filter(Species %in% "Gadus morhua" & PFAS %in% "PFOS") %>%
+  count(Unit)
+```
+### Units 2 - test using plot (2013)  
+Unit UG_P_KG in Access + NIVAbase, vs ng/g for Excel  
+```{r}
+# Access + NIVAbasen database
+library(cowplot)
+
+test1 <- dat %>%
+  filter(Year == "2013" & Species %in% "Gadus morhua" & Description %in% "36B" & PFAS %in% "PFOS") %>%
+  mutate(Value = as.numeric(sub("<","", Data)),
+         Flag = ifelse(grepl("<", Data), "<", as.character(NA)))
+gg1 <- ggplot(test1, aes(x = Flag, y = Value)) + 
+  geom_point() +
+  labs(title = "Access + NIVAbase (2013)")
+
+# par(mfrow = c(1,2), mar = c(4,5,2,1))
+# plot(test1$Value)
+
+# Excel data
+
+test2 <- data_ind2 %>%
+  filter(STATION_CODE %in% "36B" & MYEAR %in% 2013 & param2 %in% "PFOS") 
+gg2 <- ggplot(test2, aes(x = FLAG1, y = VALUE_WW)) + 
+  geom_point() + 
+  labs(title = "Excel (2013)")
+
+plot_grid(gg1, gg2, ncol = 2)
+```
+
+### Units 3 - test using plot (2009)
+Unit U in Access + NIVAbase, vs ng/g for Excel  
+```{r}
+# Access + NIVAbasen database
+library(cowplot)
+
+test1 <- dat %>%
+  filter(Year == "2009" & Species %in% "Gadus morhua" & Description %in% "36B" & PFAS %in% "PFOS") %>%
+  mutate(Value = as.numeric(sub("<","", Data)),
+         Flag = ifelse(grepl("<", Data), "<", as.character(NA)))
+gg1 <- ggplot(test1, aes(x = Flag, y = Value)) + 
+  geom_point() +
+  labs(title = "Access + NIVAbase (2009)")
+
+# par(mfrow = c(1,2), mar = c(4,5,2,1))
+# plot(test1$Value)
+
+# Excel data
+
+test2 <- data_ind2 %>%
+  filter(STATION_CODE %in% "36B" & MYEAR %in% 2009 & param2 %in% "PFOS") 
+gg2 <- ggplot(test2, aes(x = FLAG1, y = VALUE_WW)) + 
+  geom_point() + 
+  labs(title = "Excel (2009)")
+
+plot_grid(gg1, gg2, ncol = 2)
+```
+## Make new version of data set (dat2)
+
+### Make data set 'dat_withoutcod' by deleting the cod data  
+Ans also adding Value amd Flag as well as dryweight, fat percent and 
+```{r}
+# 
+dat_withoutcod <- dat %>%
+  filter(!(Species %in% "Gadus morhua" & Project %in% "MilKys")) %>%  # Remove MilKys fish
+  mutate(Value = as.numeric(sub("<","", Data)),                     # Make Value from Data
+         Flag = ifelse(grepl("<", Data), "<", as.character(NA)),    # Make Flag (less-than sign)
+         Drywt = as.numeric(NA),
+         Fatperc = as.numeric(NA),
+         Length = as.numeric(NA))
+
+nrow(dat)
+nrow(dat_withoutcod)
+```
+
+### Make data for adding  
+Note that we "construct" new values for "LIMS" on a completely different format, as this is needed to 
+identify individuals. These new identifiers (starting with "Nivabase_") have no connection to LIMS.  
+```{r}
+params <- c(
+  "PFBS", "PFDA", "PFDS", "PFHpA", "PFHxA", "PFHxS", "PFNA", "PFOA", "PFOS", "PFOSA", "PFUnDA",
+  "PFBA", "PFDoDA", "PFHXDA", "PFODA", "PFPeA", "PFTeDA", "PFTrDA"
+  )
+
+data_to_add <- data_ind2 %>%
+  filter(LATIN_NAME %in% "Gadus morhua") %>%
+  filter(param2 %in% params) %>%
+  rename(
+    Year = MYEAR,
+    Description = STATION_CODE,
+    Species = LATIN_NAME,
+    Organ = TISSUE_NAME,
+    PFAS = param2,
+    Value = VALUE_WW,
+    Flag = FLAG1,
+    Drywt = DRYWT,
+    Fatperc = FAT_PERC,
+    Length = LNMEA
+  ) %>%
+  mutate(
+    Organ = "liver",    # In this special case (see part named "Tissues")
+    Unit = "ng/g",
+    LIMS = paste0("Nivabase_", SAMPLE_NO2),   # Note: we construct new values for LIMS variable
+    Matrix = "biota",
+    Class = "Fish") %>%
+  select(-c(SAMPLE_NO2, BASIS, UNIT, PARAM,
+            VALUE_WWa, VALUE_DW, VALUE_DWa, VALUE_FB, VALUE_FBa))
+```
+[1] NA           "blood"      "egg"        "filet"      "liver"      "whole body"
+[1] "Blod"   "Galle"  "Lever"  "Muskel"
+
+### Add PFASgroup etc
+```{r}
+# Make data frame for joining to data_to_add
+dat_pfasgroups <- dat %>%
+  group_by(PFAS) %>%
+  summarise_at(c("PFASgroup","PFASlength","PFASlength_nr"), first)
+
+data_to_add <- left_join(data_to_add, dat_pfasgroups)
+```
+### Combine data  
+```{r}
+dat2 <- bind_rows(dat_withoutcod, data_to_add)
+```
+
+## Save the new data set
+```{r}
+# Save in Rdata format
+saveRDS(dat2, file = "Data/05_dat2.rds")
+# For loading:
+# dat2 <- readRDS(file = "Data/04_dat2.rds")
+
+# Save in excel format
+infostring <- c(
+  "Based on '001 PFAS stacked data table.xlsx'. Cod data replaced with cod data from Access",
+  "and NIVAbasen data. This both adds more datapoints (especially for older data) and",
+  "new columns Drywt, Fatperc and Length.",
+  "Note that we 'construct' new values for LIMS on a completely different format, as this is needed", 
+  "to identify individuals. These new identifiers (starting with 'Nivabase_') have no connection", 
+  "to LIMS.",
+  "Code: 05_Add_MILKYS_data.Rmd"
+)
+  
+data_for_excel <- list(
+  dat2,
+  tibble(Info = infostring)
+)
+names(data_for_excel) <- c("Data", "Info")
+
+openxlsx::write.xlsx(data_for_excel, file = "Data/PFAS stacked data table ver 03 (script 05).xlsx")
+
+```
+
+
+## Check of data
+### Test plot
+```{r}
+dat2 %>% 
+  filter(PFAS %in% "PFOS" & is.na(Flag) & Species %in% "Gadus morhua") %>%
+  ggplot(aes(Year, Value, color = Organ)) +
+  geom_point() +
+  facet_wrap(vars(Description)) +
+  scale_y_log10()
+```
+
+```{r}
+dat2 %>% 
+  filter(PFAS %in% "PFOS" & is.na(Flag) & Species %in% "Gadus morhua" & Description %in% "36B") %>%
+  ggplot(aes(Year, Value)) +
+  geom_point() +
+  scale_y_log10()
+```
+
+
+
+```{r}
+df_test <- dat2 %>% 
+  filter(Species %in% "Gadus morhua" & Description %in% "36B") %>%
+  select(Species, Description, Year, LIMS, Length, PFAS, Value) %>%
+  tidyr::spread(key = PFAS, value = Value) 
+
+ggplot(df_test, aes(PFOS, PFOSA, color = Year)) +
+  geom_point() +
+  scale_color_gradient(low = "red", high = "blue") + 
+  scale_y_log10() + scale_x_log10()
+```
+
+
+
+
+
+
