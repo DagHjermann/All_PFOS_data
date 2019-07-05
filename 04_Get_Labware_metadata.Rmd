@@ -15,9 +15,9 @@ library(ggplot2)
 library(tidyr)
 ```
 
-### 1b. Connect to database
+### 1b. Set username and password
 ```{r}
-connect_niva()
+set_credentials()
 ```
 
 ### 1c. Functions
@@ -653,11 +653,12 @@ xtabs(~Year + Label_original, subset(dat2, PFAS %in% c("PFPA", "PFPeA")))
 xtabs(~Year + Label_original, subset(dat2, PFAS %in% c("PFHpA", "HPFHpA")))
 ```
 
-### Duplicates 4: Make dat2_corrected
+### Duplicates 4: Make dat2_corrected  
+Note: we use only values over detection limit (deleted less-thans)
 ```{r}
 # For broad data
 dat2_corrected <- dat2 %>%
-  filter(!grepl("<", Data)) %>%
+  filter(!grepl("<", Data)) %>%        # delete less-thans
   mutate(Data = as.numeric(Data)) %>%
   select(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
          PFAS, Data)
@@ -684,13 +685,18 @@ nrow(dat2_corrected)
 # Part 3 should be no problem, since "Description" differs
 ```
 
-### Duplicates 5: Make means of the modified data
+### Duplicates 5: Make means of the modified data (dat2_means)
 ```{r}
 dat2_means <- dat2_corrected %>%
   group_by(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
            PFAS) %>%
   summarize(Data = mean(Data))
 nrow(dat2_means)
+```
+
+### Save dat2_means  
+```{r}
+saveRDS(dat2_means, "Data/04_dat2_means.rds")
 ```
 
 ### Which PFAS has highest percentage detection?
