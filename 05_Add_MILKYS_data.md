@@ -1168,8 +1168,18 @@ plot_grid(gg1, gg2, ncol = 2)
 ![](05_Add_MILKYS_data_files/figure-html/unnamed-chunk-23-1.png)<!-- -->
 ## Make new version of data set (dat2)
 
+
+```r
+sel <- is.na(dat$Data)
+mean(sel)  # 0.00087
+```
+
+```
+## [1] 0.000872864
+```
+
 ### Make data set 'dat_withoutcod' by deleting the cod data  
-Ans also adding Value amd Flag as well as dryweight, fat percent and 
+And also adding Value amd Flag as well as dryweight, fat percent and 
 
 ```r
 # 
@@ -1196,9 +1206,49 @@ nrow(dat_withoutcod)
 ## [1] 47772
 ```
 
-### Make data for adding  
+### Make data for adding ('data_to_add')
 Note that we "construct" new values for "LIMS" on a completely different format, as this is needed to 
 identify individuals. These new identifiers (starting with "Nivabase_") have no connection to LIMS.  
+
+```r
+check <- data_ind2 %>%
+  filter(param2 == "PFAS") %>%
+  count(STATION_CODE, MYEAR, SAMPLE_NO2)
+table(check$n)
+```
+
+```
+## 
+##    1    2 
+## 1726   15
+```
+
+```r
+check %>% filter(n == 2)   # Ærfugl has "duplicates" as thy have 2 tissues (eggs + blood) for each station
+```
+
+```
+## # A tibble: 15 x 4
+##    STATION_CODE MYEAR SAMPLE_NO2     n
+##    <chr>        <dbl>      <dbl> <int>
+##  1 19N           2017          1     2
+##  2 19N           2017          2     2
+##  3 19N           2017          3     2
+##  4 19N           2017          4     2
+##  5 19N           2017          5     2
+##  6 19N           2017          6     2
+##  7 19N           2017          7     2
+##  8 19N           2017          8     2
+##  9 19N           2017          9     2
+## 10 19N           2017         10     2
+## 11 19N           2017         11     2
+## 12 19N           2017         12     2
+## 13 19N           2017         13     2
+## 14 19N           2017         14     2
+## 15 19N           2017         15     2
+```
+
+
 
 ```r
 params <- c(
@@ -1224,7 +1274,7 @@ data_to_add <- data_ind2 %>%
   mutate(
     Organ = "liver",    # In this special case (see part named "Tissues")
     Unit = "ng/g",
-    LIMS = paste0("Nivabase_", SAMPLE_NO2),   # Note: we construct new values for LIMS variable
+    LIMS = paste0("Access_", Description, Year, SAMPLE_NO2),   # Note: construct new values for 'LIMS'
     Matrix = "biota",
     Class = "Fish") %>%
   select(-c(SAMPLE_NO2, BASIS, UNIT, PARAM,
@@ -1251,6 +1301,33 @@ data_to_add <- left_join(data_to_add, dat_pfasgroups)
 
 ```r
 dat2 <- bind_rows(dat_withoutcod, data_to_add)
+```
+
+### PFPA vs PFPeA: Show difference (different Label_original, lumped togehther in same Label)
+
+```r
+# 1. Some Milkys PFPA data 2006-2007 - two different 'Label_original': PFPA and PFPeA
+# We take care of this below
+
+# Example
+dat2 %>% 
+  filter(LIMS %in% "NR-2007-60795" & PFAS == "PFPA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Data)
+```
+
+```
+## # A tibble: 2 x 7
+##   LIMS          PFAS  Label_original Description Species   Class   Data    
+##   <chr>         <chr> <chr>          <chr>       <chr>     <chr>   <chr>   
+## 1 NR-2007-60795 PFPA  PFPA           I301        Blåskjell Aquatic <3.80052
+## 2 NR-2007-60795 PFPA  PFPeA          I301        Blåskjell Aquatic <8.15348
+```
+
+### PFPA vs PFPeA: change 'Label'  
+
+```r
+dat2 <- dat2 %>%
+  mutate(PFAS = ifelse(Label_original %in% c("PFPeA", "HPFHpA"), Label_original, PFAS))
 ```
 
 ## Save the new data set
@@ -1298,23 +1375,24 @@ dat2 %>%
 ## Warning: Transformation introduced infinite values in continuous y-axis
 ```
 
-![](05_Add_MILKYS_data_files/figure-html/unnamed-chunk-29-1.png)<!-- -->
+![](05_Add_MILKYS_data_files/figure-html/unnamed-chunk-33-1.png)<!-- -->
 
+### Test plot for a single parameter     
 
 ```r
 dat2 %>% 
   filter(PFAS %in% "PFOS" & is.na(Flag) & Species %in% "Gadus morhua" & Description %in% "36B") %>%
   ggplot(aes(Year, Value)) +
-  geom_point() +
+  geom_jitter(width = 0.15) +
   scale_y_log10()
 ```
 
-![](05_Add_MILKYS_data_files/figure-html/unnamed-chunk-30-1.png)<!-- -->
+![](05_Add_MILKYS_data_files/figure-html/unnamed-chunk-34-1.png)<!-- -->
 
-
-
+### Test plot PFOSA vs PFOS
 
 ```r
+# Must rearrange data using tidyr::spread (parameters side-by-side)
 df_test <- dat2 %>% 
   filter(Species %in% "Gadus morhua" & Description %in% "36B") %>%
   select(Species, Description, Year, LIMS, Length, PFAS, Value) %>%
@@ -1326,9 +1404,655 @@ ggplot(df_test, aes(PFOS, PFOSA, color = Year)) +
   scale_y_log10() + scale_x_log10()
 ```
 
-![](05_Add_MILKYS_data_files/figure-html/unnamed-chunk-31-1.png)<!-- -->
+![](05_Add_MILKYS_data_files/figure-html/unnamed-chunk-35-1.png)<!-- -->
 
 
+
+## Prepare for making wide format  
+Wide format: One column = one parameter  
+Needs to have only one row for each combinations of LIMS, PFAS, Species, etc. That is what we do below.  
+  
+This part and next part ('Make wide format data') are based on the corresponding parts in script 04, but we use Value instead of Data, as 'Data' is lacking for all cod. Another difference is that PFPA vs PFPeA has already been dealt with above.    
+
+### Same LIMS can have two different Matrix  
+Example below. So we need to group on Matrix as well. 
+
+```r
+dat2 %>% filter(LIMS %in% "NR-2013-2612-1A" & PFAS %in% "PFBS") %>% select(LIMS, Matrix, PFAS, Data)
+```
+
+```
+## # A tibble: 2 x 4
+##   LIMS            Matrix    PFAS  Data               
+##   <chr>           <chr>     <chr> <chr>              
+## 1 NR-2013-2612-1A water     PFBS  0.93000000000000005
+## 2 NR-2013-2612-1A particles PFBS  <0.1
+```
+
+### Check duplicates 1   
+ca 783 duplicates, but as we will see in the next part 
+
+```r
+#  Check whether we have duplicates
+check1 <- dat2 %>%
+  count(LIMS, PFAS, Matrix) %>%
+  mutate(LIMS_PFAS_Matrix = paste(LIMS, PFAS, Matrix, sep = "_"))
+
+table(check1$n)
+```
+
+```
+## 
+##     1     2    10 
+## 60787   417    53
+```
+
+### Check duplicates 2   
+check2: pick duplicates from check1 and list all different values for each variable  
+Exploration of the 4 different "cases" in check2  
+
+```r
+# Function for listing all different variables
+vals <- function(x) {
+  paste(unique(x), collapse = ";")
+}
+# vals(c(1,4,4,6,8,19,8))
+
+check2 <- dat2 %>%
+  mutate(LIMS_PFAS_Matrix = paste(LIMS, PFAS, Matrix, sep = "_")) %>%
+  filter(LIMS_PFAS_Matrix %in% subset(check1, n > 1)$LIMS_PFAS_Matrix) %>%
+  select(LIMS, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+         PFAS, Value) %>%
+  group_by(LIMS, PFAS) %>%
+  summarise_all(vals)
+
+sel <- grepl(";", check2$Value); sum(sel)  # 47, so most of the 773 duplicates have the same value
+```
+
+```
+## [1] 47
+```
+
+```r
+mean(sel)  # 10%
+```
+
+```
+## [1] 0.1
+```
+
+```r
+# Look at the whole thing (code below is based on this)
+# View(check2[sel,])
+```
+
+#### Exploration of each "case":
+
+```r
+# 1. Store innsjøer 2015 - registered  twice with slightly different concentrations
+#    Sometimes also as species Osnerus eperlanus and Krøkle (same thing)
+check2[sel,] %>% 
+  filter(Project == "Store innsjøer") %>% 
+  select(LIMS, PFAS, Description, Species, Class, Value)
+```
+
+```
+## # A tibble: 28 x 6
+## # Groups:   LIMS [13]
+##    LIMS          PFAS   Description Species     Class Value   
+##    <chr>         <chr>  <chr>       <chr>       <chr> <chr>   
+##  1 NR-2015-09882 PFDA   Mjøsa       Krøkle;Fish Fish  11;10.8 
+##  2 NR-2015-09882 PFDoDA Mjøsa       Krøkle;Fish Fish  12;12.3 
+##  3 NR-2015-09882 PFOS   Mjøsa       Krøkle;Fish Fish  17;16.9 
+##  4 NR-2015-09882 PFTrDA Mjøsa       Krøkle;Fish Fish  20;20.1 
+##  5 NR-2015-09882 PFUnDA Mjøsa       Krøkle;Fish Fish  22;21.8 
+##  6 NR-2015-09883 PFDS   Mjøsa       Krøkle;Fish Fish  0.1;0.22
+##  7 NR-2015-09883 PFUnDA Mjøsa       Krøkle;Fish Fish  12;12.5 
+##  8 NR-2015-09884 PFTeDA Mjøsa       Krøkle;Fish Fish  0.4;0.5 
+##  9 NR-2015-09886 PFNA   Mjøsa       Krøkle;Fish Fish  0.5;0.9 
+## 10 NR-2015-09886 PFUnDA Mjøsa       Krøkle;Fish Fish  6.3;6.4 
+## # ... with 18 more rows
+```
+
+```r
+# Used later
+lims_storeinnsjo_2015 <- check2[sel,] %>% 
+  filter(Project == "Store innsjøer") %>% 
+  select(LIMS, PFAS, Description, Species, Class, Value) %>%
+  pull(LIMS) %>% unique()
+dat2 %>% 
+  filter(LIMS %in% "NR-2015-09882" & PFAS == "PFDA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Value)
+```
+
+```
+## # A tibble: 2 x 7
+##   LIMS          PFAS  Label_original Description Species Class Value
+##   <chr>         <chr> <chr>          <chr>       <chr>   <chr> <dbl>
+## 1 NR-2015-09882 PFDA  PFDA           Mjøsa       Krøkle  Fish   11  
+## 2 NR-2015-09882 PFDA  PFDA           Mjøsa       Fish    Fish   10.8
+```
+
+```r
+# Fish vs Ørret
+dat2 %>% 
+  filter(LIMS %in% "NR-2015-09889" & PFAS == "PFNA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Value)
+```
+
+```
+## # A tibble: 2 x 7
+##   LIMS          PFAS  Label_original Description Species Class Value
+##   <chr>         <chr> <chr>          <chr>       <chr>   <chr> <dbl>
+## 1 NR-2015-09889 PFNA  PFNA           Mjøsa       Fish    Fish    0.8
+## 2 NR-2015-09889 PFNA  PFNA           Mjøsa       Ørret   Fish    0.5
+```
+
+
+
+```r
+# 2. Tyrifjorden 2018 - some with LIMS number "NR-2018-" (but Description differs)
+check2[sel,] %>% 
+  filter(Project == "Tyrifjorden") %>% 
+  select(LIMS, PFAS, Description, Species, Class, Value)
+```
+
+```
+## # A tibble: 10 x 6
+## # Groups:   LIMS [1]
+##    LIMS   PFAS   Description                 Species Class Value           
+##    <chr>  <chr>  <chr>                       <chr>   <chr> <chr>           
+##  1 NR-20~ 12:2 ~ SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  1.8;1.88;1.84;2~
+##  2 NR-20~ FOSAA  SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  0.13;0.37;0.28;~
+##  3 NR-20~ PFDA   SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  0.4;0.8;0.9;0.5~
+##  4 NR-20~ PFDoDA SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  6.5;3.5;9.1;7.5~
+##  5 NR-20~ PFNA   SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  0.7;0.4;0.6;0.5 
+##  6 NR-20~ PFOS   SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  0.78;1.49;1.53;~
+##  7 NR-20~ PFOSA  SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  0.16;0.53;0.31;~
+##  8 NR-20~ PFTeDA SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  5.2;3.8;7;8;9.5~
+##  9 NR-20~ PFTrDA SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  6;2.2;6.6;6.2;9~
+## 10 NR-20~ PFUnDA SØ-KP-1;SØ-KP-2;SØ-KP-3;SØ~ Fish    Fish  2;1;2.4;2.1;3;3~
+```
+
+```r
+dat2 %>% 
+  filter(LIMS %in% "NR-2018-" & PFAS == "PFDA") %>% 
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Value)
+```
+
+```
+## # A tibble: 10 x 7
+##    LIMS     PFAS  Label_original Description Species Class Value
+##    <chr>    <chr> <chr>          <chr>       <chr>   <chr> <dbl>
+##  1 NR-2018- PFDA  PFDA           SØ-KP-1     Fish    Fish    0.4
+##  2 NR-2018- PFDA  PFDA           SØ-KP-2     Fish    Fish    0.4
+##  3 NR-2018- PFDA  PFDA           SØ-KP-3     Fish    Fish    0.4
+##  4 NR-2018- PFDA  PFDA           SØ-KP-4     Fish    Fish    0.8
+##  5 NR-2018- PFDA  PFDA           SØ-KP-5     Fish    Fish    0.9
+##  6 NR-2018- PFDA  PFDA           SØ-KP-6     Fish    Fish    0.4
+##  7 NR-2018- PFDA  PFDA           SØ-KP-7     Fish    Fish    0.5
+##  8 NR-2018- PFDA  PFDA           SØ-KP-8     Fish    Fish    0.6
+##  9 NR-2018- PFDA  PFDA           SØ-KP-9     Fish    Fish    0.4
+## 10 NR-2018- PFDA  PFDA           SØ-KP-10    Fish    Fish    1
+```
+
+
+```r
+# 3. Randsfjorden (I964, I965, I969) 2018 - duplicates of Sum
+#    May be with and without detection limit
+# Note: in script 04 there were also confusion PFPA and PFPeA, plus PFHpA and HPFHpA  
+# The least common ones are not included here in script 05
+
+check2[sel,] %>% 
+  filter(Project == "MilKys" & Description %in% c("I964","I965","I969")) %>% 
+  select(LIMS, PFAS, Description, Species, Class, Value)
+```
+
+```
+## # A tibble: 9 x 6
+## # Groups:   LIMS [9]
+##   LIMS           PFAS  Description Species   Class   Value 
+##   <chr>          <chr> <chr>       <chr>     <chr>   <chr> 
+## 1 NR-2018-242373 Sum   I965        Blåskjell Aquatic 14.3;1
+## 2 NR-2018-242374 Sum   I964        Blåskjell Aquatic 1;14.3
+## 3 NR-2018-242375 Sum   I964        Blåskjell Aquatic 1;14.3
+## 4 NR-2018-242376 Sum   I965        Blåskjell Aquatic 1;14.3
+## 5 NR-2018-242377 Sum   I965        Blåskjell Aquatic 14.3;1
+## 6 NR-2018-242378 Sum   I964        Blåskjell Aquatic 1;14.3
+## 7 NR-2018-242503 Sum   I969        Blåskjell Aquatic 14.3;1
+## 8 NR-2018-242504 Sum   I969        Blåskjell Aquatic 14.3;1
+## 9 NR-2018-242505 Sum   I969        Blåskjell Aquatic 14.3;1
+```
+
+```r
+#    Sum: may be with and without detection limit?
+dat2 %>% 
+  filter(LIMS %in% "NR-2018-242373") %>% 
+  select(LIMS, PFAS, Label_original, Description, Value)
+```
+
+```
+## # A tibble: 22 x 5
+##    LIMS           PFAS   Label_original Description Value
+##    <chr>          <chr>  <chr>          <chr>       <dbl>
+##  1 NR-2018-242373 PFHxA  PFHxA          I965         0.5 
+##  2 NR-2018-242373 PFPeA  PFPeA          I965         0.5 
+##  3 NR-2018-242373 PFDoDA PFDoA          I965         0.5 
+##  4 NR-2018-242373 PFDS   PFDS           I965         0.75
+##  5 NR-2018-242373 PFNA   PFNA           I965         0.5 
+##  6 NR-2018-242373 Sum    Sum            I965        14.3 
+##  7 NR-2018-242373 PFHxS  PFHxS          I965         0.75
+##  8 NR-2018-242373 PFOSA  PFOSA          I965         0.5 
+##  9 NR-2018-242373 PFOA   PFOA           I965         0.5 
+## 10 NR-2018-242373 PFUnDA PFUdA          I965         0.5 
+## # ... with 12 more rows
+```
+
+```r
+# Used later
+lims_ranfjorden <- dat2 %>% 
+  filter(Project == "MilKys" & Description %in% c("I964","I965","I969") & PFAS %in% "Sum") %>%
+  select(LIMS, PFAS, Label_original, Description, Species, Class, Value) %>%
+  pull(LIMS) %>% unique()
+```
+
+### Make dat2_corrected  
+Note: we use only values over detection limit (deleted less-thans)  
+
+```r
+# For broad data
+dat2_corrected <- dat2 %>%
+  filter(is.na(Flag)) %>%        # delete less-thans
+  mutate(Value = as.numeric(Value)) %>%
+  select(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+         Drywt, Fatperc, Length,
+         PFAS, Value)
+nrow(dat2_corrected)
+```
+
+```
+## [1] 12607
+```
+
+```r
+# Part 4 above: Delete high sums for Ranfjorden blue mussel 
+dat2_corrected <- dat2_corrected %>%
+  filter(!(LIMS %in% lims_ranfjorden & PFAS %in% "Sum" & Value > 10))
+nrow(dat2_corrected)
+```
+
+```
+## [1] 12598
+```
+
+```r
+# Part 2 above - set same Species
+# That values differ slighlty we fix by making the means
+dat2_corrected <- dat2_corrected %>%
+  arrange(LIMS, PFAS, Species) %>%
+  group_by(LIMS, PFAS) %>%
+  mutate(Species = ifelse(LIMS %in% lims_storeinnsjo_2015, first(Species), Species)) %>%
+  ungroup()
+nrow(dat2_corrected) # 23880
+```
+
+```
+## [1] 12598
+```
+
+```r
+# Part 3 should be no problem, since "Description" differs
+```
+
+
+```r
+sel <- is.na(dat2$Value)
+mean(sel)  # 0.00076
+```
+
+```
+## [1] 0.0007562227
+```
+
+```r
+# head(dat2[sel,], 1000)
+
+mean(is.na(dat2$Value))
+```
+
+```
+## [1] 0.0007562227
+```
+
+```r
+mean(is.na(dat2_corrected$Value))
+```
+
+```
+## [1] 0.003730751
+```
+
+### Make means of the modified data (dat2_means)
+#### Preliminary data set dat2_means  
+Checks variation of Value using the coeff. of variation (CV)   
+
+```r
+dat2_means <- dat2_corrected %>%
+  filter(!is.na(dat2_corrected$Value)) %>%
+  group_by(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+           Drywt, Fatperc, Length,
+           PFAS) %>%
+  summarize(Value_mean = mean(Value), Value_sd = sd(Value)) %>%
+  mutate(Value_CV = Value_sd/Value_mean)     # coeff. of variation
+
+cat("Data size:\n")
+```
+
+```
+## Data size:
+```
+
+```r
+nrow(dat2)
+```
+
+```
+## [1] 62151
+```
+
+```r
+nrow(dat2_means)
+```
+
+```
+## [1] 12451
+```
+
+```r
+cat("Coeff. of variation summary:\n")
+```
+
+```
+## Coeff. of variation summary:
+```
+
+```r
+sel <- is.finite(dat2_means$Value_CV)
+sum(sel)  # 24
+```
+
+```
+## [1] 100
+```
+
+```r
+mean(sel)
+```
+
+```
+## [1] 0.008031483
+```
+
+```r
+summary(dat2_means$Value_CV[sel])
+```
+
+```
+##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+## 0.00000 0.00000 0.00000 0.01386 0.00000 0.53033
+```
+
+```r
+dat2_means[sel,] %>% 
+  arrange(desc(Value_CV))
+```
+
+```
+## # A tibble: 100 x 18
+## # Groups:   LIMS, Label_original, Description, Project, Species, Unit,
+## #   Count, Year, Matrix, Organ, Class, Drywt, Fatperc, Length [100]
+##    LIMS  Label_original Description Project Species Unit  Count  Year
+##    <chr> <chr>          <chr>       <chr>   <chr>   <chr> <dbl> <dbl>
+##  1 NR-2~ PFDS           Mjøsa       Store ~ Fish    ng/g      1  2015
+##  2 NR-2~ PFTeA          Mjøsa       Store ~ Fish    ng/g      1  2015
+##  3 NR-2~ PFNA           Mjøsa       Store ~ Fish    ng/g      1  2015
+##  4 NR-2~ PFTeA          Mjøsa       Store ~ Fish    ng/g      1  2015
+##  5 NR-2~ PFOS           Mjøsa       Store ~ Fish    ng/g      1  2015
+##  6 NR-2~ PFUdA          Mjøsa       Store ~ Fish    ng/g      1  2015
+##  7 NR-2~ PFUdA          Mjøsa       Store ~ Fish    ng/g      1  2015
+##  8 NR-2~ PFOS           Mjøsa       Store ~ Fish    ng/g      1  2015
+##  9 NR-2~ PFTrA          Mjøsa       Store ~ Fish    ng/g      1  2015
+## 10 NR-2~ PFOSA          Mjøsa       Store ~ Fish    ng/g      1  2015
+## # ... with 90 more rows, and 10 more variables: Matrix <chr>, Organ <chr>,
+## #   Class <chr>, Drywt <dbl>, Fatperc <dbl>, Length <dbl>, PFAS <chr>,
+## #   Value_mean <dbl>, Value_sd <dbl>, Value_CV <dbl>
+```
+
+```r
+# Check the two highest   
+# Accepted for now
+lims_highcv <- dat2_means[sel,] %>% filter(Value_CV > 0.1) %>% pull(LIMS)
+param_highcv <- dat2_means[sel,] %>% filter(Value_CV > 0.1) %>% pull(PFAS)
+
+dat2 %>% 
+  filter(LIMS %in% lims_highcv & PFAS %in% param_highcv) %>% 
+  arrange(LIMS, PFAS)
+```
+
+```
+## # A tibble: 8 x 25
+##   Description Project LIMS  Matrix_orig Species Organ_orig Unit 
+##   <chr>       <chr>   <chr> <chr>       <chr>   <chr>      <chr>
+## 1 Mjøsa       Store ~ NR-2~ Biota       Krøkle  liver      ng/g 
+## 2 Mjøsa       Store ~ NR-2~ Biota       Fish    liver      ng/g 
+## 3 Mjøsa       Store ~ NR-2~ Biota       Krøkle  liver      ng/g 
+## 4 Mjøsa       Store ~ NR-2~ Biota       Fish    liver      ng/g 
+## 5 Mjøsa       Store ~ NR-2~ Biota       Fish    liver      ng/g 
+## 6 Mjøsa       Store ~ NR-2~ Biota       Ørret   liver      ng/g 
+## 7 Mjøsa       Store ~ NR-2~ Biota       Fish    liver      ng/g 
+## 8 Mjøsa       Store ~ NR-2~ Biota       Ørret   liver      ng/g 
+## # ... with 18 more variables: Label_original <chr>, Data_orig <chr>,
+## #   Data <chr>, Data_nr <dbl>, Count <dbl>, Year <dbl>, Matrix <chr>,
+## #   Organ <chr>, Class <chr>, PFAS <chr>, PFASgroup <chr>,
+## #   PFASlength <dbl>, PFASlength_nr <dbl>, Value <dbl>, Flag <chr>,
+## #   Drywt <dbl>, Fatperc <dbl>, Length <dbl>
+```
+
+#### Accept Value_mean and finish dat2_means   
+
+```r
+dat2_means <- dat2_means %>%
+  rename(Value = Value_mean) %>%
+  select(-Value_sd, -Value_CV)
+```
+
+### Save dat2_means  
+
+```r
+saveRDS(dat2_means, "Data/05_dat2_means.rds")
+```
+
+### Which PFAS has highest percentage detection?
+
+```r
+# First, make  
+detection_rate <- dat2_corrected %>%
+  count(PFAS) %>%
+  arrange(desc(n))
+
+# Will be used for factor() later
+PFAS_ordered <- detection_rate %>% pull(PFAS)
+
+detection_rate
+```
+
+```
+## # A tibble: 41 x 2
+##    PFAS       n
+##    <chr>  <int>
+##  1 PFOS    2906
+##  2 PFOSA   1814
+##  3 PFUnDA  1252
+##  4 PFTrDA   972
+##  5 PFDoDA   941
+##  6 PFDA     908
+##  7 PFTeDA   749
+##  8 PFNA     463
+##  9 PFDS     368
+## 10 PFHxS    339
+## # ... with 31 more rows
+```
+
+## 13. Make wide format data
+
+### All data
+
+```r
+dat2_wide <- dat2_means %>%
+  mutate(PFAS = factor(PFAS, levels = PFAS_ordered)) %>%
+  select(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+         Drywt, Fatperc, Length,
+         PFAS, Value) %>%
+  tidyr::spread(key = PFAS, value = Value)
+
+# Save in Rdata format
+saveRDS(dat2_wide, file = "Data/05_dat2_wide.rds")
+
+openxlsx::write.xlsx(dat2_wide, file = "Data/002 PFAS split table ver03.xlsx")
+```
+
+
+### Biota data
+
+```r
+sum(is.na(dat2_wide$Matrix)) # 0
+```
+
+```
+## [1] 0
+```
+
+```r
+xtabs(~addNA(Species) + Matrix, dat2_wide)
+```
+
+```
+##                             Matrix
+## addNA(Species)               biota particles sediment sludge waste water
+##   Abbor                        317         0        0      0           0
+##   Bird                         530         0        0      0           0
+##   Blåskjell                     70         0        0      0           0
+##   Børstemark                   112         0        0      0           0
+##   Fish                        1740         0        0      0           0
+##   flyndre                      259         0        0      0           0
+##   Gadus morhua                1950         0        0      0           0
+##   Grevling                       4         0        0      0           0
+##   Gråmåke                      405         0        0      0           0
+##   Gråtrost                      37         0        0      0           0
+##   Kattugle                       2         0        0      0           0
+##   Krill                         36         0        0      0           0
+##   Krøkle                       451         0        0      0           0
+##   Lepidorhombus whiffiagonis    36         0        0      0           0
+##   Limanda limanda               16         0        0      0           0
+##   Littorina littorea             2         0        0      0           0
+##   Lågesild                      16         0        0      0           0
+##   Meitemark                      5         0        0      0           0
+##   Mysis                          6         0        0      0           0
+##   Måke                         833         0        0      0           0
+##   Nucella lapillus               2         0        0      0           0
+##   Platichthys flesus            11         0        0      0           0
+##   Pleuronectes platessa         30         0        0      0           0
+##   Reke                         109         0        0      0           0
+##   Rotte                         11         0        0      0           0
+##   Rødrev                         5         0        0      0           0
+##   Sik                          283         0        0      0           0
+##   Sild                          12         0        0      0           0
+##   Somateria mollissima          74         0        0      0           0
+##   Spurvehauk                    37         0        0      0           0
+##   Zooplankton                   12         0        0      0           0
+##   Ærfugl                       102         0        0      0           0
+##   Ørret                       1319         0        0      0           0
+##   <NA>                         796         1      958     21          20
+##                             Matrix
+## addNA(Species)               water
+##   Abbor                          0
+##   Bird                           0
+##   Blåskjell                      0
+##   Børstemark                     0
+##   Fish                           0
+##   flyndre                        0
+##   Gadus morhua                   0
+##   Grevling                       0
+##   Gråmåke                        0
+##   Gråtrost                       0
+##   Kattugle                       0
+##   Krill                          0
+##   Krøkle                         0
+##   Lepidorhombus whiffiagonis     0
+##   Limanda limanda                0
+##   Littorina littorea             0
+##   Lågesild                       0
+##   Meitemark                      0
+##   Mysis                          0
+##   Måke                           0
+##   Nucella lapillus               0
+##   Platichthys flesus             0
+##   Pleuronectes platessa          0
+##   Reke                           0
+##   Rotte                          0
+##   Rødrev                         0
+##   Sik                            0
+##   Sild                           0
+##   Somateria mollissima           0
+##   Spurvehauk                     0
+##   Zooplankton                    0
+##   Ærfugl                         0
+##   Ørret                          0
+##   <NA>                         276
+```
+
+```r
+openxlsx::write.xlsx(dat2_wide %>% filter(Matrix %in% "biota"),
+                     file = "Data/003 Subset PFAS biota ver03.xlsx")
+```
+
+### Fish data
+
+```r
+sum(is.na(dat2_wide$Class)) # 2
+```
+
+```
+## [1] 2072
+```
+
+```r
+xtabs(~Species + addNA(Class), subset(dat2_wide, Class %in% "Fish"))
+```
+
+```
+##                             addNA(Class)
+## Species                      Fish <NA>
+##   Abbor                       317    0
+##   Fish                       1740    0
+##   flyndre                     259    0
+##   Gadus morhua               1950    0
+##   Krøkle                      451    0
+##   Lepidorhombus whiffiagonis   36    0
+##   Limanda limanda              16    0
+##   Lågesild                     16    0
+##   Mysis                         6    0
+##   Platichthys flesus           11    0
+##   Pleuronectes platessa        30    0
+##   Sik                         283    0
+##   Sild                         12    0
+##   Ørret                      1319    0
+```
+
+```r
+openxlsx::write.xlsx(dat2_wide %>% filter(Class %in% "Fish"),
+                     file = "Data/004 Subset PFAS fish ver03.xlsx")
+```
 
 
 
