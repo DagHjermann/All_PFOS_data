@@ -445,8 +445,8 @@ dat2 <- dat %>%
   rename(Species_orig = Species) %>%
   mutate(Species = case_when(
     !is.na(SPECIES) & is.na(Species_orig) ~ SPECIES,
-    !is.na(SPECIES) & Species_orig %in% c("Fish","MÃ¥ke","Bird") ~ SPECIES,
-    !is.na(SPECIES) & SPECIES != "Ikke angitt" & Species_orig %in% "Ã˜rret" ~ SPECIES,
+    !is.na(SPECIES) & Species_orig %in% c("Fish","Måke","Bird") ~ SPECIES,
+    !is.na(SPECIES) & SPECIES != "Ikke angitt" & Species_orig %in% "Ørret" ~ SPECIES,
     TRUE ~ Species_orig
   )
   )
@@ -594,14 +594,14 @@ dat2 %>%
   filter(LIMS %in% "NR-2006-60801" & PFAS == "PFPA") %>% 
   select(LIMS, PFAS, Label_original, Description, Species, Class, Data)
 
-# 2. Store innsjÃ¸er 2015 - registered  twice with slightly different concentrations
-#    Sometimes also as species Osnerus eperlanus and KrÃ¸kle (same thing)
+# 2. Store innsjøer 2015 - registered  twice with slightly different concentrations
+#    Sometimes also as species Osnerus eperlanus and Krøkle (same thing)
 check2[sel,] %>% 
-  filter(Project == "Store innsjÃ¸er") %>% 
+  filter(Project == "Store innsjøer") %>% 
   select(LIMS, PFAS, Description, Species, Class, Data)
 # Used later
 lims_storeinnsjo_2015 <- check2[sel,] %>% 
-  filter(Project == "Store innsjÃ¸er") %>% 
+  filter(Project == "Store innsjøer") %>% 
   select(LIMS, PFAS, Description, Species, Class, Data) %>%
   pull(LIMS) %>% unique()
 dat2 %>% 
@@ -645,7 +645,7 @@ check2[sel,] %>%
   filter(Project == "MilKys" & Description %in% c("I964","I965","I969"))
 ```
 
-### Duplicates 3: Check PFPA and PFPeA, plus PFHpA and HPFHpA  
+### Check duplicates 3: Check PFPA and PFPeA, plus PFHpA and HPFHpA  
 PFPeA only found 6 times in 2006-07
 HPFHpA only found 9 times in 2018
 ```{r}
@@ -653,8 +653,8 @@ xtabs(~Year + Label_original, subset(dat2, PFAS %in% c("PFPA", "PFPeA")))
 xtabs(~Year + Label_original, subset(dat2, PFAS %in% c("PFHpA", "HPFHpA")))
 ```
 
-### Duplicates 4: Make dat2_corrected  
-Note: we use only values over detection limit (deleted less-thans)
+### Make dat2_corrected  
+Note: we use only values over detection limit (deleted less-thans)  
 ```{r}
 # For broad data
 dat2_corrected <- dat2 %>%
@@ -685,7 +685,7 @@ nrow(dat2_corrected)
 # Part 3 should be no problem, since "Description" differs
 ```
 
-### Duplicates 5: Make means of the modified data (dat2_means)
+### Make means of the modified data (dat2_means)
 ```{r}
 dat2_means <- dat2_corrected %>%
   group_by(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
@@ -718,7 +718,7 @@ detection_rate
 ```{r}
 dat2_wide <- dat2_means %>%
   mutate(PFAS = factor(PFAS, levels = PFAS_ordered)) %>%
-  select(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+  select(LIMS, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
          PFAS, Data) %>%
   tidyr::spread(key = PFAS, value = Data)
 
@@ -749,18 +749,6 @@ openxlsx::write.xlsx(dat2_wide %>% filter(Class %in% "Fish"),
                      file = "Data/004 Subset PFAS fish ver02.xlsx")
 
 ```
-
-```{r}
-
-
-df <- dat2 %>%
-  filter(!grepl("<", Data)) %>%
-  mutate(Data = as.numeric(Data)) %>%
-  select(LIMS, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
-         PFAS, Data)
-df[c(8616,8949),]
-```
-
 
 
 
