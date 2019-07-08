@@ -471,12 +471,12 @@ dat2 <- dat2 %>%
   mutate(PFAS = ifelse(Label_original %in% c("PFPeA", "HPFHpA"), Label_original, PFAS))
 ```
 
-## Save the new data set
+## Save the new data 'dat2' set
 ```{r}
 # Save in Rdata format
 saveRDS(dat2, file = "Data/05_dat2.rds")
 # For loading:
-# dat2 <- readRDS(file = "Data/04_dat2.rds")
+# dat2 <- readRDS(file = "Data/05_dat2.rds")
 
 # Save in excel format
 infostring <- c(
@@ -685,7 +685,8 @@ dat2_means <- dat2_corrected %>%
            Drywt, Fatperc, Length,
            PFAS) %>%
   summarize(Value_mean = mean(Value), Value_sd = sd(Value)) %>%
-  mutate(Value_CV = Value_sd/Value_mean)     # coeff. of variation
+  mutate(Value_CV = Value_sd/Value_mean)  %>%   # coeff. of variation
+  ungroup()
 
 cat("Data size:\n")
 nrow(dat2)
@@ -739,18 +740,24 @@ detection_rate
 
 ### All data
 ```{r}
+# Restructure datausing tidyr::spread
 dat2_wide <- dat2_means %>%
   mutate(PFAS = factor(PFAS, levels = PFAS_ordered)) %>%
-  select(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+  select(LIMS, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
          Drywt, Fatperc, Length,
          PFAS, Value) %>%
   tidyr::spread(key = PFAS, value = Value)
+
+# Check number of PFAS per line
+df <- dat2_wide %>% 
+  select(-(LIMS:Length))
+table(apply(!is.na(df), 1, sum))
+# apply(!is.na(df), 2, sum)
 
 # Save in Rdata format
 saveRDS(dat2_wide, file = "Data/05_dat2_wide.rds")
 
 openxlsx::write.xlsx(dat2_wide, file = "Data/002 PFAS split table ver03.xlsx")
-
 ```
 
 
