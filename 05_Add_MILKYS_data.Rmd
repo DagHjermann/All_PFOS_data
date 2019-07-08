@@ -7,11 +7,13 @@ output:
     keep_md: true
     toc: true
     toc_float: true
+    number_sections: true
+    
 ---
 
 ## Setup
 
-### 1a. Libraries
+### Libraries
 ```{r}
 library(dplyr)
 library(niRvana)
@@ -22,7 +24,7 @@ library(tidyr)
 source("05_Add_MILKYS_data_functions.R")
 ```
 
-### 1b. Set username and password
+### Set username and password
 ```{r}
 # set_credentials()
 ```
@@ -736,7 +738,7 @@ PFAS_ordered <- detection_rate %>% pull(PFAS)
 detection_rate
 ```
 
-## 13. Make wide format data
+## Make wide format data
 
 ### All data
 ```{r}

@@ -7,11 +7,13 @@ output:
     keep_md: true
     toc: true
     toc_float: true
+    number_sections: true
+    
 ---
 
 ## Setup
 
-### 1a. Libraries
+### Libraries
 
 ```r
 library(dplyr)
@@ -43,7 +45,7 @@ library(tidyr)
 source("05_Add_MILKYS_data_functions.R")
 ```
 
-### 1b. Set username and password
+### Set username and password
 
 ```r
 # set_credentials()
@@ -1330,13 +1332,13 @@ dat2 <- dat2 %>%
   mutate(PFAS = ifelse(Label_original %in% c("PFPeA", "HPFHpA"), Label_original, PFAS))
 ```
 
-## Save the new data set
+## Save the new data 'dat2' set
 
 ```r
 # Save in Rdata format
 saveRDS(dat2, file = "Data/05_dat2.rds")
 # For loading:
-# dat2 <- readRDS(file = "Data/04_dat2.rds")
+# dat2 <- readRDS(file = "Data/05_dat2.rds")
 
 # Save in excel format
 infostring <- c(
@@ -1743,7 +1745,8 @@ dat2_means <- dat2_corrected %>%
            Drywt, Fatperc, Length,
            PFAS) %>%
   summarize(Value_mean = mean(Value), Value_sd = sd(Value)) %>%
-  mutate(Value_CV = Value_sd/Value_mean)     # coeff. of variation
+  mutate(Value_CV = Value_sd/Value_mean)  %>%   # coeff. of variation
+  ungroup()
 
 cat("Data size:\n")
 ```
@@ -1809,8 +1812,6 @@ dat2_means[sel,] %>%
 
 ```
 ## # A tibble: 100 x 18
-## # Groups:   LIMS, Label_original, Description, Project, Species, Unit,
-## #   Count, Year, Matrix, Organ, Class, Drywt, Fatperc, Length [100]
 ##    LIMS  Label_original Description Project Species Unit  Count  Year
 ##    <chr> <chr>          <chr>       <chr>   <chr>   <chr> <dbl> <dbl>
 ##  1 NR-2~ PFDS           Mjøsa       Store ~ Fish    ng/g      1  2015
@@ -1903,17 +1904,35 @@ detection_rate
 ## # ... with 31 more rows
 ```
 
-## 13. Make wide format data
+## Make wide format data
 
 ### All data
 
 ```r
+# Restructure datausing tidyr::spread
 dat2_wide <- dat2_means %>%
   mutate(PFAS = factor(PFAS, levels = PFAS_ordered)) %>%
-  select(LIMS, Label_original, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
+  select(LIMS, Description, Project, Species, Unit, Count, Year, Matrix, Organ, Class,
          Drywt, Fatperc, Length,
          PFAS, Value) %>%
   tidyr::spread(key = PFAS, value = Value)
+
+# Check number of PFAS per line
+df <- dat2_wide %>% 
+  select(-(LIMS:Length))
+table(apply(!is.na(df), 1, sum))
+```
+
+```
+## 
+##   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18 
+## 740 794 373 158 124  91 166 211 125 103  60  34  29  14  19   4   4   2 
+##  19  20  24  25 
+##   2   1   1   1
+```
+
+```r
+# apply(!is.na(df), 2, sum)
 
 # Save in Rdata format
 saveRDS(dat2_wide, file = "Data/05_dat2_wide.rds")
@@ -1939,40 +1958,40 @@ xtabs(~addNA(Species) + Matrix, dat2_wide)
 ```
 ##                             Matrix
 ## addNA(Species)               biota particles sediment sludge waste water
-##   Abbor                        317         0        0      0           0
-##   Bird                         530         0        0      0           0
-##   Blåskjell                     70         0        0      0           0
-##   Børstemark                   112         0        0      0           0
-##   Fish                        1740         0        0      0           0
-##   flyndre                      259         0        0      0           0
-##   Gadus morhua                1950         0        0      0           0
-##   Grevling                       4         0        0      0           0
-##   Gråmåke                      405         0        0      0           0
-##   Gråtrost                      37         0        0      0           0
+##   Abbor                         30         0        0      0           0
+##   Bird                          60         0        0      0           0
+##   Blåskjell                     43         0        0      0           0
+##   Børstemark                    13         0        0      0           0
+##   Fish                         188         0        0      0           0
+##   flyndre                       30         0        0      0           0
+##   Gadus morhua                1612         0        0      0           0
+##   Grevling                       3         0        0      0           0
+##   Gråmåke                       60         0        0      0           0
+##   Gråtrost                      19         0        0      0           0
 ##   Kattugle                       2         0        0      0           0
-##   Krill                         36         0        0      0           0
-##   Krøkle                       451         0        0      0           0
-##   Lepidorhombus whiffiagonis    36         0        0      0           0
-##   Limanda limanda               16         0        0      0           0
-##   Littorina littorea             2         0        0      0           0
-##   Lågesild                      16         0        0      0           0
-##   Meitemark                      5         0        0      0           0
+##   Krill                         12         0        0      0           0
+##   Krøkle                        87         0        0      0           0
+##   Lepidorhombus whiffiagonis    30         0        0      0           0
+##   Limanda limanda                8         0        0      0           0
+##   Littorina littorea             1         0        0      0           0
+##   Lågesild                       6         0        0      0           0
+##   Meitemark                      3         0        0      0           0
 ##   Mysis                          6         0        0      0           0
-##   Måke                         833         0        0      0           0
+##   Måke                         121         0        0      0           0
 ##   Nucella lapillus               2         0        0      0           0
-##   Platichthys flesus            11         0        0      0           0
-##   Pleuronectes platessa         30         0        0      0           0
-##   Reke                         109         0        0      0           0
-##   Rotte                         11         0        0      0           0
+##   Platichthys flesus            10         0        0      0           0
+##   Pleuronectes platessa         18         0        0      0           0
+##   Reke                          12         0        0      0           0
+##   Rotte                          6         0        0      0           0
 ##   Rødrev                         5         0        0      0           0
-##   Sik                          283         0        0      0           0
-##   Sild                          12         0        0      0           0
-##   Somateria mollissima          74         0        0      0           0
-##   Spurvehauk                    37         0        0      0           0
+##   Sik                           60         0        0      0           0
+##   Sild                           6         0        0      0           0
+##   Somateria mollissima          29         0        0      0           0
+##   Spurvehauk                    18         0        0      0           0
 ##   Zooplankton                   12         0        0      0           0
-##   Ærfugl                       102         0        0      0           0
-##   Ørret                       1319         0        0      0           0
-##   <NA>                         796         1      958     21          20
+##   Ærfugl                        15         0        0      0           0
+##   Ørret                        236         0        0      0           0
+##   <NA>                         124         1      132      2           2
 ##                             Matrix
 ## addNA(Species)               water
 ##   Abbor                          0
@@ -2008,7 +2027,7 @@ xtabs(~addNA(Species) + Matrix, dat2_wide)
 ##   Zooplankton                    0
 ##   Ærfugl                         0
 ##   Ørret                          0
-##   <NA>                         276
+##   <NA>                          32
 ```
 
 ```r
@@ -2023,7 +2042,7 @@ sum(is.na(dat2_wide$Class)) # 2
 ```
 
 ```
-## [1] 2072
+## [1] 293
 ```
 
 ```r
@@ -2033,20 +2052,20 @@ xtabs(~Species + addNA(Class), subset(dat2_wide, Class %in% "Fish"))
 ```
 ##                             addNA(Class)
 ## Species                      Fish <NA>
-##   Abbor                       317    0
-##   Fish                       1740    0
-##   flyndre                     259    0
-##   Gadus morhua               1950    0
-##   Krøkle                      451    0
-##   Lepidorhombus whiffiagonis   36    0
-##   Limanda limanda              16    0
-##   Lågesild                     16    0
+##   Abbor                        30    0
+##   Fish                        188    0
+##   flyndre                      30    0
+##   Gadus morhua               1612    0
+##   Krøkle                       87    0
+##   Lepidorhombus whiffiagonis   30    0
+##   Limanda limanda               8    0
+##   Lågesild                      6    0
 ##   Mysis                         6    0
-##   Platichthys flesus           11    0
-##   Pleuronectes platessa        30    0
-##   Sik                         283    0
-##   Sild                         12    0
-##   Ørret                      1319    0
+##   Platichthys flesus           10    0
+##   Pleuronectes platessa        18    0
+##   Sik                          60    0
+##   Sild                          6    0
+##   Ørret                       236    0
 ```
 
 ```r
