@@ -5,6 +5,8 @@ date: "2 7 2019"
 output: html_document
 ---
 
+In this script, we enter new Species and Organ info into the data from Merete's Excel file. We do this using data from NIVAbase.We also  make "wide-form data" (version 2 of the Excel files named 002,003,004) at the end of the script.
+
 ## Setup
 
 ### 1a. Libraries
@@ -66,11 +68,6 @@ mean(check)  # should be 1
 Lots of the 2017-18 data lack species - can we get this from LIMS?
 ```{r}
 table(substr(dat$LIMS,4,7), !is.na(dat$Species))
-```
-
-Lots of the 2017-18 data lack species - can we get this from LIMS?
-```{r}
-table(substr(dat$LIMS,4,7), !is.na(dat$Organ))
 ```
 
 

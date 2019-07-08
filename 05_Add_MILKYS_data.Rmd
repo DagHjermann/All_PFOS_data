@@ -11,6 +11,8 @@ output:
     
 ---
 
+In this script, we base ourself on the output of script 04. We then use the data from the MILKYS Access database to add columns for dry weight, fat weight and fish length into the data (which is also here called dat2, as in scroipt 04, but it is not the same dat2...). We do this by simply deleting all Milkys cod (there is also Urban fjord cod) and put in new cod data made from the Access base. As in script 04, we also make "wide-form data" (version 3 of the Excel files named 002,003,004) at the end of the script. 
+
 ## Setup
 
 ### Libraries

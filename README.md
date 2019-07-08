@@ -19,3 +19,7 @@ Scripts:
     - Thus we should use the MILKYS Access database (for teh marien biota data at least)
 * "04_Get_Labware_metadata.Rmd"
     - Here I was able to get species and tissue for *most* of the biota data from 2015 onwards  
+    - Makes 'ver. 2' of the Excel files named 002, 003, 004
+* "05_Add_Milkys_data.Rmd"
+    - Add columns for dry weight, fat weight and fish length (based on Access database)
+    - Makes 'ver. 3' of the Excel files named 002, 003, 004
