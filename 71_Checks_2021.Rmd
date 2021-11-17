@@ -1,0 +1,229 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+## Packages  
+```{r}
+
+library(dplyr)
+library(niRvana)
+library(ggplot2)
+library(tidyr)
+
+# install.packages("ODBC")
+source("05_Add_MILKYS_data_functions.R")
+
+```
+
+```{r}
+# Input your NIVAbasen username/password
+set_credentials()
+
+```
+
+
+## Data from script 05   
+```{r}
+dat2_means <- readRDS("Data/05_dat2_means.rds")
+dat2_wide <- readRDS(file = "Data/05_dat2_wide.rds")
+
+```
+
+
+## Tables  
+
+### Dry weight  
+```{r}
+
+xtabs(~is.na(Drywt), dat2_means)
+xtabs(~addNA(Project) + is.na(Drywt), dat2_means)
+
+```
+
+### Fat percentage    
+```{r}
+
+xtabs(~is.na(Fatperc), dat2_means)
+xtabs(~addNA(Project) + is.na(Fatperc), dat2_means)
+
+xtabs(~addNA(Species) + is.na(Fatperc), dat2_means)
+
+xtabs(~addNA(Year) + is.na(Fatperc), dat2_means %>% filter(Species == "Gadus morhua"))
+
+```
+
+
+## Name 'dictionary' (from 01)  
+```{r}
+
+df_method_sel <- readxl::read_xlsx("Data/01_methods_pfas.xlsx")
+
+
+```
+
+
+## Data from Merete (stacked data)
+```{r}
+
+dat <- readxl::read_excel("Input_data/001 PFAS stacked data table.xlsx", guess_max = 59000)
+# A few errors in the 'PFASlength' variable
+
+tab <- table(dat$LIMS)
+length(tab)  # 2809 samples
+
+samplecodes <- names(tab)
+  
+```
+
+
+Check year column  
+- Should fit with LIMS column (it does)  
+
+```{r}
+
+check <- as.numeric(substr(dat$LIMS,4,7)) == dat$Year
+mean(check)  # should be 1
+
+```
+
+
+### Find samples in LABWARE_CHECK_SAMPLE  
+
+```{r}
+
+labware_vars <- paste(
+  "ACCOUNT_NUMBER, CUSTOMER, PROSJEKT, TISSUE, BIOTA_SAMPLENO, X_BULK_BIO, TEXT_ID,", 
+  "DESCRIPTION, AQUAMONITOR_ID, AQUAMONITOR_CODE, AQUAMONITOR_NAME")
+
+df_check <- get_nivabase_selection(
+  labware_vars,
+  "LABWARE_CHECK_SAMPLE",
+  "TEXT_ID",
+  samplecodes, values_are_text = TRUE)
+
+nrow(df_check)
+
+```
+### Check length of codes  
+
+```{r}
+
+samplecodes_found <- samplecodes[samplecodes %in% df_check$TEXT_ID]
+samplecodes_notfound <- samplecodes[!samplecodes %in% df_check$TEXT_ID]
+
+cat("Number of characters for samplecodes that were found: \n")
+table(nchar(samplecodes_found))   # All
+
+cat("\n\n")
+cat("Number of characters for samplecodes that were not found: \n")
+table(nchar(samplecodes_notfound))
+
+```
+
+
+### Make modified Lims code    
+- the LIMS code should be 13 characters  
+- If 12 characters, insert an extra zero  
+```{r}
+
+dat <- dat %>%
+  mutate(
+    LIMS_modified = case_when(
+      nchar(LIMS) == 12 ~ paste0(substr(LIMS, 1, 8), "0", substr(LIMS, 9, 12)),
+      TRUE ~ LIMS
+    )
+    
+  )
+
+df_labware <- get_nivabase_selection(
+  labware_vars,
+  "LABWARE_CHECK_SAMPLE",
+  "TEXT_ID",
+  unique(dat$LIMS_modified), 
+  values_are_text = TRUE)
+
+nrow(df_labware)
+
+dat <- dat %>%
+  mutate(
+    Found_in_labware = LIMS_modified %in% df_labware$TEXT_ID
+  )
+
+
+```
+
+### Check which projects for which we find result   
+- None of Milkys samples found  
+- All or almost all Elveovervåkning, Milby, Referanseelver, Tyrifjorden samples found   
+- Ca 50% to 75% of Store Innsjøer + Urban Fjord samples found       
+```{r}
+
+if (FALSE){
+  table(df_labware$PROSJEKT) %>% sort(decreasing = TRUE)
+  table(dat$Project, dat$Year)
+}
+
+table(dat$Project, dat$Found_in_labware)
+
+```
+
+### Check Milkys example  
+- Check Ålesund harbour (28A2) 2018   
+- TEXT_ID and LIMS numbers are completely different!  
+- Can still use DESCRIPTION field  
+```{r}
+
+df_example_labware <- get_nivabase_selection(
+  labware_vars,
+  "LABWARE_CHECK_SAMPLE",
+  "AQUAMONITOR_CODE",
+  "28A2", 
+  values_are_text = TRUE) %>%
+  filter(grepl("2018", TEXT_ID)) %>%
+  arrange(TEXT_ID)
+
+df_example_excel <- dat %>%
+  filter(Description %in% "28A2" & Year == 2018 & Label_original == "PFOS") %>%
+  arrange(LIMS)
+
+df_example_labware$TEXT_ID
+df_example_excel$LIMS
+
+df_example_excel$Label_original
+
+```
+
+### TODO
+
+- Check Labware table for those Store Innsjøer + Urban Fjord samples that could  be found   
+- Check Excel table for those Store Innsjøer + Urban Fjord samples that could NOT be found  
+```{r}
+
+# Store Innsjøer + Urban Fjord 
+
+```
+
+
+
+### Missing 'species' in the excel file    
+Lots of the 2017-18 data lack species - can we get this from Labware?    
+- For non-Milkys data - we find Labware data for the vast majority    
+    - 13582 samples out of (13582 + 903) samples  
+- For Milkys data - we already have species (and could always find anyway)  
+
+```{r}
+
+cat("Missing 'species' by year: \n")
+xtabs(~Year + is.na(Species), dat)
+
+cat("\n\n")
+cat("Missing 'species' by year: \n")
+xtabs(~Found_in_labware + is.na(Species) + (Project == "MilKys"), dat)
+
+```
+
+
+
+

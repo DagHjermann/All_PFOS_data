@@ -1,4 +1,10 @@
 
+#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-
+#
+# SEE 71 ('Data from Merete' for updated stuff!  
+#
+#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-
+
 #
 # Based on 'C:\Data\seksjon 318\get-fresh-temp\01_Explore_temp_data.Rmd'
 #
